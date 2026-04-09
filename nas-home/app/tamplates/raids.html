@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between mb-4">
+    <h2>🗂️ Gestión RAID</h2>
+    <a href="{{ url_for('routes.dashboard') }}" class="btn btn-secondary">← Dashboard</a>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>➕ Crear Nuevo RAID</h5>
+            </div>
+            <div class="card-body">
+                <form>
+                    <div class="mb-3">
+                        <label class="form-label">Nivel RAID</label>
+                        <select id="raid-level" class="form-select">
+                            <option value="0">RAID 0 (Striping)</option>
+                            <option value="1">RAID 1 (Mirroring)</option>
+                            <option value="5">RAID 5</option>
+                            <option value="6">RAID 6</option>
+                            <option value="10">RAID 10</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Discos disponibles</label>
+                        {% for disk in disks %}
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="raid-devices" value="{{ disk.name }}">
+                            <label class="form-check-label">
+                                {{ disk.name }} ({{ disk.size }})
+                            </label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <button id="create-raid" class="btn btn-danger w-100">
+                        ⚠️ CREAR RAID (¡BORRARÁ DATOS!)
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>📊 RAIDs Activos</h5>
+            </div>
+            <div class="card-body">
+                {% for raid in raids %}
+                <div class="p-3 bg-light rounded mb-2">
+                    <div class="d-flex justify-content-between">
+                        <h6>{{ raid.name }} (Nivel {{ raid.level }})</h6>
+                        <span class="badge bg-success">{{ raid.status }}</span>
+                    </div>
+                    <small class="text-muted">{{ raid.devices }}</small>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

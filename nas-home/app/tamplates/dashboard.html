@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <h5>Clientes</h5>
+                <h3 id="client-count">{{ clients|length }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <h5>Backups</h5>
+                <h3>{{ backups|length }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>🌐 Clientes en Red</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush" id="clients-list">
+                    {% for client in clients %}
+                    <div class="list-group-item px-0">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6>{{ client.name }}</h6>
+                            <button class="btn btn-outline-primary btn-sm backup-btn" 
+                                    data-ip="{{ client.ip }}" data-name="{{ client.name }}">
+                                💾 Backup
+                            </button>
+                        </div>
+                        <small class="text-muted">{{ client.ip }}</small>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>📦 Últimos Backups</h5>
+            </div>
+            <div class="card-body">
+                {% for backup in backups %}
+                <div class="d-flex justify-content-between align-items-center mb-2 p-2 bg-light rounded">
+                    <div>
+                        <strong>{{ backup.client_name }}</strong><br>
+                        <small class="text-muted">{{ backup.created_at.strftime('%d/%m %H:%M') }}</small>
+                    </div>
+                    <span class="badge bg-{{ 'success' if backup.status=='completed' else 'danger' if backup.status=='failed' else 'warning' }}">
+                        {{ backup.status }}
+                    </span>
+                </div>
+                {% endfor %}
+                <a href="{{ url_for('routes.backups') }}" class="btn btn-primary w-100 mt-2">Ver todos</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

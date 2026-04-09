@@ -1,0 +1,13 @@
+[Unit]
+Description=NAS Home Flask App
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory=/opt/nas-home
+Environment="PATH=/opt/nas-home/venv/bin"
+ExecStart=/opt/nas-home/venv/bin/python run.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

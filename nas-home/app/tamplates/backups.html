@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>💾 Gestión de Backups</h2>
+    <a href="{{ url_for('routes.dashboard') }}" class="btn btn-secondary">← Dashboard</a>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Cliente</th>
+                                <th>Ruta</th>
+                                <th>Tamaño</th>
+                                <th>Estado</th>
+                                <th>Fecha</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for backup in backups %}
+                            <tr>
+                                <td><strong>{{ backup.client_name }}</strong></td>
+                                <td>{{ backup.backup_path|truncate(40) }}</td>
+                                <td>{{ (backup.size / 1024 / 1024)|round(1) }} MB</td>
+                                <td>
+                                    <span class="badge bg-{{ 'success' if backup.status=='completed' else 'danger' if backup.status=='failed' else 'warning' }}">
+                                        {{ backup.status }}
+                                    </span>
+                                </td>
+                                <td>{{ backup.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-success restore-btn me-1" 
+                                            data-id="{{ backup.id }}">🔄 Restaurar</button>
+                                    {% if current_user.is_admin %}
+                                    <button class="btn btn-sm btn-outline-danger delete-backup" 
+                                            data-id="{{ backup.id }}">🗑️ Borrar</button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
