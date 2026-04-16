@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block nav_backups %}active{% endblock %}
+{% block page_title %}Backups{% endblock %}
+{% block page_subtitle %}Gestión y restauración de copias de seguridad{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <div class="card-header">
+        <i class="bi bi-archive"></i>
+        Todas las Copias de Seguridad
+        <span class="ms-2" style="color:var(--text-muted);font-weight:400;font-size:13px;">
+            {{ backups|length }} registros
+        </span>
+    </div>
+    <div class="card-body p-0">
+        {% if backups %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th style="padding-left:20px;">Cliente</th>
+                        <th>IP</th>
+                        <th>Ruta</th>
+                        <th>Tamaño</th>
+                        <th>Estado</th>
+                        <th>Fecha</th>
+                        <th style="text-align:right;padding-right:20px;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for backup in backups %}
+                    <tr>
+                        <td style="padding-left:20px;">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="client-avatar" style="width:30px;height:30px;border-radius:8px;font-size:13px;flex-shrink:0;">
+                                    <i class="bi bi-pc-display"></i>
+                                </div>
+                                <strong>{{ backup.client_name }}</strong>
+                            </div>
+                        </td>
+                        <td><code>{{ backup.client_ip }}</code></td>
+                        <td>
+                            <span style="color:var(--text-muted);font-size:12px;font-family:monospace;">
+                                {{ backup.backup_path|truncate(38) }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if backup.size %}
+                                {% if backup.size > 1073741824 %}
+                                    {{ (backup.size / 1073741824)|round(1) }} GB
+                                {% elif backup.size > 1048576 %}
+                                    {{ (backup.size / 1048576)|round(1) }} MB
+                                {% else %}
+                                    {{ (backup.size / 1024)|round(1) }} KB
+                                {% endif %}
+                            {% else %}
+                                <span style="color:var(--text-muted)">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge
+                                {% if backup.status == 'completed' %}badge-completed
+                                {% elif backup.status == 'failed' %}badge-failed
+                                {% elif backup.status == 'restored' %}badge-restored
+                                {% else %}badge-pending{% endif %}">
+                                {% if backup.status == 'completed' %}
+                                    <i class="bi bi-check-circle me-1"></i>
+                                {% elif backup.status == 'failed' %}
+                                    <i class="bi bi-x-circle me-1"></i>
+                                {% elif backup.status == 'restored' %}
+                                    <i class="bi bi-arrow-counterclockwise me-1"></i>
+                                {% else %}
+                                    <i class="bi bi-hourglass-split me-1"></i>
+                                {% endif %}
+                                {{ backup.status }}
+                            </span>
+                        </td>
+                        <td style="white-space:nowrap;color:var(--text-secondary);font-size:13px;">
+                            {{ backup.created_at.strftime('%d/%m/%Y') }}<br>
+                            <small style="color:var(--text-muted);">{{ backup.created_at.strftime('%H:%M') }}</small>
+                        </td>
+                        <td style="text-align:right;padding-right:20px;">
+                            <div class="d-flex gap-1 justify-content-end">
+                                <button class="btn btn-sm btn-outline-success restore-btn"
+                                        data-id="{{ backup.id }}"
+                                        data-name="{{ backup.client_name }}"
+                                        title="Restaurar backup">
+                                    <i class="bi bi-arrow-counterclockwise me-1"></i>Restaurar
+                                </button>
+                                {% if current_user.is_admin %}
+                                <button class="btn btn-sm btn-outline-danger delete-backup"
+                                        data-id="{{ backup.id }}"
+                                        data-name="{{ backup.client_name }}"
+                                        title="Eliminar backup">
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding:64px 24px;">
+            <i class="bi bi-archive d-block" style="font-size:48px;margin-bottom:16px;opacity:.3;"></i>
+            <p style="font-size:15px;margin-bottom:8px;">No hay backups registrados</p>
+            <small>Ve al Dashboard y selecciona un cliente para crear el primer backup</small>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- ===== RESTORE MODAL ===== -->
+<div class="modal fade" id="restoreModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-arrow-counterclockwise me-2" style="color:var(--success)"></i>
+                    Restaurar Backup
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Restaurando backup de <strong id="restoreClientName"></strong>.</p>
+                <div class="mb-3 mt-3">
+                    <label class="form-label">Ruta de destino</label>
+                    <input type="text" class="form-control font-monospace" id="restoreTarget"
+                           placeholder="/ruta/destino">
+                    <div class="form-text" style="color:var(--text-muted);">
+                        Directorio donde se restaurarán los archivos
+                    </div>
+                </div>
+                <div class="warning-box">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <div>Los archivos existentes en la ruta de destino pueden ser sobreescritos.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-success" id="confirmRestoreBtn">
+                    <i class="bi bi-arrow-counterclockwise me-2"></i>Restaurar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== DELETE BACKUP MODAL ===== -->
+<div class="modal fade" id="deleteBackupModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-trash3 me-2" style="color:var(--danger)"></i>
+                    Eliminar Backup
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>¿Eliminar permanentemente el backup de
+                   <strong id="deleteBackupName"></strong>?</p>
+                <div class="warning-box mt-3">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <div>Esta acción no se puede deshacer. Los archivos del backup
+                         serán eliminados del disco.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-danger" id="confirmDeleteBackupBtn">
+                    <i class="bi bi-trash3 me-2"></i>Eliminar definitivamente
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

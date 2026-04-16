@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block nav_raid %}active{% endblock %}
+{% block page_title %}RAID{% endblock %}
+{% block page_subtitle %}Gestión de matrices de discos{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+    <!-- Create RAID -->
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-plus-circle"></i>
+                Crear Nueva Matriz RAID
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Nivel RAID</label>
+                    <select id="raid-level" class="form-select">
+                        <option value="0">RAID 0 — Striping (rendimiento, sin redundancia)</option>
+                        <option value="1" selected>RAID 1 — Mirroring (espejo, alta redundancia)</option>
+                        <option value="5">RAID 5 — Striping + paridad distribuida</option>
+                        <option value="6">RAID 6 — Striping + doble paridad</option>
+                        <option value="10">RAID 10 — Espejo + Striping</option>
+                    </select>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label">Discos disponibles</label>
+                    {% if disks %}
+                    {% for disk in disks %}
+                    <label class="disk-check-item">
+                        <input class="form-check-input" type="checkbox"
+                               name="raid-devices" value="{{ disk.name }}">
+                        <div class="disk-info">
+                            <div class="disk-name">{{ disk.name }}</div>
+                            <div class="disk-size">{{ disk.size }}</div>
+                        </div>
+                    </label>
+                    {% endfor %}
+                    {% else %}
+                    <div class="empty-state" style="padding:24px;">
+                        <i class="bi bi-hdd d-block" style="font-size:28px;margin-bottom:8px;opacity:.3;"></i>
+                        <small>No se detectaron discos disponibles</small>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="warning-box mb-4">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <div>
+                        <strong>Atención:</strong> Crear un RAID destruirá todos los datos
+                        existentes en los discos seleccionados. Esta operación es irreversible.
+                    </div>
+                </div>
+
+                <button id="create-raid" class="btn btn-danger w-100" {% if not disks %}disabled{% endif %}>
+                    <i class="bi bi-hdd-rack me-2"></i>Crear Matriz RAID
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active RAIDs -->
+    <div class="col-lg-7">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-hdd-rack"></i>
+                Matrices Activas
+                <span class="ms-2" style="color:var(--text-muted);font-weight:400;font-size:13px;">
+                    {{ raids|length }} configuradas
+                </span>
+            </div>
+            <div class="card-body">
+                {% if raids %}
+                {% for raid in raids %}
+                <div class="raid-item">
+                    <div class="raid-header">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="stat-icon stat-blue"
+                                 style="width:34px;height:34px;border-radius:8px;font-size:15px;background:rgba(59,130,246,.12);color:#3b82f6;display:flex;align-items:center;justify-content:center;">
+                                <i class="bi bi-hdd-rack"></i>
+                            </div>
+                            <div>
+                                <div class="raid-name">{{ raid.name }}</div>
+                                <small style="color:var(--text-muted);">
+                                    RAID Nivel {{ raid.level }} &mdash;
+                                    {{ raid.created_at.strftime('%d/%m/%Y') }}
+                                </small>
+                            </div>
+                        </div>
+                        <span class="badge
+                            {% if raid.status == 'active' %}badge-completed
+                            {% elif raid.status == 'degraded' %}badge-pending
+                            {% else %}badge-failed{% endif %}">
+                            <i class="bi bi-circle-fill me-1" style="font-size:7px;"></i>
+                            {{ raid.status }}
+                        </span>
+                    </div>
+                    <div class="raid-devices mt-2">
+                        <i class="bi bi-hdd me-1" style="color:var(--text-muted)"></i>
+                        {{ raid.devices }}
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="empty-state" style="padding:64px 24px;">
+                    <i class="bi bi-hdd-rack d-block" style="font-size:48px;margin-bottom:16px;opacity:.3;"></i>
+                    <p style="font-size:15px;margin-bottom:8px;">No hay matrices RAID configuradas</p>
+                    <small>Selecciona discos y crea tu primera matriz RAID</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== RAID CONFIRM MODAL ===== -->
+<div class="modal fade" id="raidModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle me-2" style="color:var(--danger)"></i>
+                    Confirmar Creación de RAID
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Estás a punto de crear una matriz
+                   <strong>RAID <span id="raidLevelInfo"></span></strong>
+                   con <strong><span id="raidDiskCount"></span> disco(s)</strong>.</p>
+                <div id="raidDiskList" class="mb-3"
+                     style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-family:monospace;font-size:13px;color:var(--text-secondary);">
+                </div>
+                <div class="warning-box">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <div>
+                        <strong>ADVERTENCIA CRÍTICA:</strong> Todos los datos en los discos
+                        seleccionados serán destruidos permanentemente. Esta acción
+                        <strong>no se puede deshacer</strong>.
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-danger" id="confirmRaidBtn">
+                    <i class="bi bi-hdd-rack me-2"></i>Confirmo, crear RAID
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

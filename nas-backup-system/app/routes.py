@@ -1,7 +1,7 @@
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from app import db
-from app.models import User, Backup, Raid
+from app.models import User, Backup, Raid, Group
 from app.utils import *
 from werkzeug.security import generate_password_hash
 from datetime import datetime
@@ -35,7 +35,9 @@ def logout():
 def dashboard():
     clients = get_network_clients()
     backups = Backup.query.order_by(Backup.created_at.desc()).limit(10).all()
-    return render_template('dashboard.html', clients=clients, backups=backups)
+    raids = Raid.query.all()
+    completed = Backup.query.filter_by(status='completed').count()
+    return render_template('dashboard.html', clients=clients, backups=backups, raids=raids, completed=completed)
 
 @bp.route('/backups')
 @login_required
@@ -92,7 +94,7 @@ def restore_backup(backup_id):
 def raid():
     raids = Raid.query.all()
     disks = get_disks()
-    return render_template('raid.html', raids=raids, disks=disks)
+    return render_template('raids.html', raids=raids, disks=disks)
 
 @bp.route('/api/raid/create', methods=['POST'])
 @login_required
@@ -176,3 +178,61 @@ def delete_user(user_id):
 @login_required
 def clients_count():
     return jsonify({'count': len(get_network_clients())})
+
+# ----------------------------------------------------------------
+# GROUPS
+# ----------------------------------------------------------------
+@bp.route('/groups')
+@login_required
+def groups():
+    if not current_user.is_admin:
+        flash('Acceso denegado')
+        return redirect(url_for('routes.dashboard'))
+    all_groups = Group.query.order_by(Group.name).all()
+    all_users  = User.query.order_by(User.username).all()
+    return render_template('groups.html', groups=all_groups, users=all_users)
+
+@bp.route('/api/groups', methods=['POST'])
+@login_required
+def manage_groups():
+    if not current_user.is_admin:
+        return jsonify({'error': 'Acceso denegado'}), 403
+
+    data   = request.json
+    action = data.get('action')
+
+    if action == 'create':
+        if Group.query.filter_by(name=data['name']).first():
+            return jsonify({'error': 'Ya existe un grupo con ese nombre'}), 400
+        group = Group(name=data['name'], description=data.get('description', ''))
+        db.session.add(group)
+        db.session.commit()
+        return jsonify({'success': True, 'id': group.id})
+
+    elif action == 'add_user':
+        group = Group.query.get_or_404(data['group_id'])
+        user  = User.query.get_or_404(data['user_id'])
+        if user not in group.members:
+            group.members.append(user)
+            db.session.commit()
+        return jsonify({'success': True})
+
+    elif action == 'remove_user':
+        group = Group.query.get_or_404(data['group_id'])
+        user  = User.query.get_or_404(data['user_id'])
+        if user in group.members:
+            group.members.remove(user)
+            db.session.commit()
+        return jsonify({'success': True})
+
+    return jsonify({'error': 'Acción no válida'}), 400
+
+@bp.route('/api/groups/<int:group_id>/delete', methods=['DELETE'])
+@login_required
+def delete_group(group_id):
+    if not current_user.is_admin:
+        return jsonify({'error': 'Acceso denegado'}), 403
+    group = Group.query.get_or_404(group_id)
+    db.session.delete(group)
+    db.session.commit()
+    return jsonify({'success': True})
