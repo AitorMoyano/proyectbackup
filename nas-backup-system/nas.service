@@ -3,11 +3,12 @@ Description=NAS Home Flask App
 After=network.target
 
 [Service]
-User=www-data
-WorkingDirectory=/opt/nas-home
-Environment="PATH=/opt/nas-home/venv/bin"
-ExecStart=/opt/nas-home/venv/bin/python run.py
+User=servidornas
+WorkingDirectory=/home/servidornas/proyectbackup/nas-backup-system
+ExecStart=/home/servidornas/proyectbackup/nas-backup-system/venv/bin/python run.py
 Restart=always
+RestartSec=5
+EnvironmentFile=/home/servidornas/proyectbackup/nas-backup-system/.env
 
 [Install]
 WantedBy=multi-user.target

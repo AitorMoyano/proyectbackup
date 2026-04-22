@@ -15,7 +15,8 @@ def run_command(cmd):
 def get_network_clients():
     """Obtiene clientes en la red"""
     clients = []
-    result = run_command("sudo nmap -sn 192.168.1.0/24 | grep 'Nmap scan report' -A 2")
+    network = os.environ.get('NETWORK_RANGE', '192.168.56.0/24')
+    result = run_command(f"sudo nmap -sn {network} | grep 'Nmap scan report' -A 2")
     if result['success']:
         # Parsear resultado nmap (simplificado)
         lines = result['output'].split('\n')
