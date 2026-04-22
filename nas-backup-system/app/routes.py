@@ -103,7 +103,7 @@ def create_raid():
     level = data['level']
     devices = data['devices']
     
-    cmd = f"sudo mdadm --create --verbose /dev/md{len(Raid.query.all())} --level={level} --raid-devices={len(devices)} {' '.join(devices)}"
+    cmd = f"yes | sudo mdadm --create --verbose /dev/md{len(Raid.query.all())} --level={level} --raid-devices={len(devices)} {' '.join(devices)}"
     result = run_command(cmd)
     
     if result['success']:
