@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block nav_dashboard %}active{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_subtitle %}Bienvenido, {{ current_user.username }}{% endblock %}
+
+{% block content %}
+
+<!-- ===== STAT CARDS ===== -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-xl-3">
+        <div class="stat-card stat-blue">
+            <div class="stat-glow"></div>
+            <div class="stat-icon"><i class="bi bi-pc-display-horizontal"></i></div>
+            <div class="stat-value" id="client-count">{{ clients|length }}</div>
+            <div class="stat-label">Clientes en Red</div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="stat-card stat-green">
+            <div class="stat-glow"></div>
+            <div class="stat-icon"><i class="bi bi-archive-fill"></i></div>
+            <div class="stat-value">{{ backups|length }}</div>
+            <div class="stat-label">Últimos Backups</div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="stat-card stat-yellow">
+            <div class="stat-glow"></div>
+            <div class="stat-icon"><i class="bi bi-check-circle-fill"></i></div>
+            <div class="stat-value">{{ completed }}</div>
+            <div class="stat-label">Completados</div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="stat-card stat-cyan">
+            <div class="stat-glow"></div>
+            <div class="stat-icon"><i class="bi bi-hdd-rack-fill"></i></div>
+            <div class="stat-value">{{ raids|length }}</div>
+            <div class="stat-label">RAIDs Activos</div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== PANELS ===== -->
+<div class="row g-3">
+
+    <!-- Network clients -->
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-wifi"></i>
+                Clientes en Red
+                <span class="badge ms-auto" style="background:rgba(59,130,246,.15);color:#3b82f6;border:1px solid rgba(59,130,246,.25);">
+                    {{ clients|length }} online
+                </span>
+            </div>
+            <div class="card-body">
+                {% if clients %}
+                <div id="clients-list">
+                    {% for client in clients %}
+                    <div class="client-item">
+                        <div class="client-avatar">
+                            <i class="bi bi-pc-display"></i>
+                        </div>
+                        <div class="client-info">
+                            <div class="client-name">
+                                <span class="status-dot online"></span>{{ client.name }}
+                            </div>
+                            <div class="client-ip">{{ client.ip }}</div>
+                        </div>
+                        <button class="btn btn-outline-primary btn-sm backup-btn"
+                                data-ip="{{ client.ip }}"
+                                data-name="{{ client.name }}">
+                            <i class="bi bi-archive me-1"></i>Backup
+                        </button>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <i class="bi bi-wifi-off d-block"></i>
+                    <p>No se encontraron clientes en la red</p>
+                    <small>Asegúrate de que nmap esté instalado y ejecutándose como sudoer</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent backups -->
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-clock-history"></i>
+                Últimos Backups
+                <a href="{{ url_for('routes.backups') }}"
+                   class="btn btn-sm btn-secondary ms-auto">
+                    Ver todos <i class="bi bi-arrow-right ms-1"></i>
+                </a>
+            </div>
+            <div class="card-body">
+                {% if backups %}
+                {% for backup in backups %}
+                <div class="client-item">
+                    <div class="client-avatar"
+                         style="background:linear-gradient(135deg,#064e3b,#065f46);">
+                        <i class="bi bi-archive"></i>
+                    </div>
+                    <div class="client-info">
+                        <div class="client-name">{{ backup.client_name }}</div>
+                        <div class="client-ip">
+                            {{ backup.created_at.strftime('%d/%m/%Y %H:%M') }}
+                        </div>
+                    </div>
+                    <span class="badge
+                        {% if backup.status == 'completed' %}badge-completed
+                        {% elif backup.status == 'failed' %}badge-failed
+                        {% elif backup.status == 'restored' %}badge-restored
+                        {% else %}badge-pending{% endif %}">
+                        {{ backup.status }}
+                    </span>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="empty-state">
+                    <i class="bi bi-archive d-block"></i>
+                    <p>No hay backups aún</p>
+                    <small>Selecciona un cliente para crear el primer backup</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== BACKUP MODAL ===== -->
+<div class="modal fade" id="backupModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-archive me-2" style="color:var(--accent)"></i>
+                    Crear Backup
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>¿Crear backup de <strong id="backupClientName"></strong>
+                   (<code id="backupClientIp"></code>)?</p>
+                <div class="info-box mt-3">
+                    <i class="bi bi-info-circle"></i>
+                    <div>Se usará rsync para copiar los datos del cliente al servidor NAS.
+                         La operación puede tardar varios minutos.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-primary" id="confirmBackupBtn">
+                    <i class="bi bi-archive me-2"></i>Iniciar Backup
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

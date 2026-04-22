@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block nav_users %}active{% endblock %}
+{% block page_title %}Usuarios{% endblock %}
+{% block page_subtitle %}Gestión de cuentas de acceso{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+    <!-- New user form -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-person-plus"></i>
+                Nuevo Usuario
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Nombre de usuario</label>
+                    <input type="text" id="new-username" class="form-control"
+                           placeholder="usuario123" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="new-email" class="form-control"
+                           placeholder="usuario@nas.local" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Contraseña</label>
+                    <div class="input-group">
+                        <input type="password" id="new-password" class="form-control"
+                               placeholder="Mínimo 8 caracteres" required>
+                        <button class="btn btn-secondary" type="button" id="togglePassword">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="disk-check-item mb-4" style="cursor:default;">
+                    <input class="form-check-input" type="checkbox"
+                           id="new-is-admin" style="flex-shrink:0;">
+                    <div class="disk-info">
+                        <div class="disk-name" style="font-family:inherit;">Administrador</div>
+                        <div class="disk-size">Puede crear/eliminar backups y usuarios</div>
+                    </div>
+                </div>
+                <button id="create-user" class="btn btn-primary w-100">
+                    <i class="bi bi-person-plus me-2"></i>Crear Usuario
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Users list -->
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-people"></i>
+                Usuarios del Sistema
+                <span class="ms-2" style="color:var(--text-muted);font-weight:400;font-size:13px;">
+                    {{ users|length }} cuentas
+                </span>
+            </div>
+            <div class="card-body p-0">
+                {% if users %}
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th style="padding-left:20px;">Usuario</th>
+                            <th>Email</th>
+                            <th>Rol</th>
+                            <th>Creado</th>
+                            {% if current_user.is_admin %}
+                            <th style="text-align:right;padding-right:20px;">Acciones</th>
+                            {% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td style="padding-left:20px;">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="user-avatar"
+                                         style="width:34px;height:34px;font-size:13px;flex-shrink:0;
+                                                {% if user.is_admin %}background:linear-gradient(135deg,#7c3aed,#4f46e5);{% endif %}">
+                                        {{ user.username[0].upper() }}
+                                    </div>
+                                    <div>
+                                        <div style="font-weight:600;font-size:14px;">
+                                            {{ user.username }}
+                                            {% if user.id == current_user.id %}
+                                            <span class="badge ms-1"
+                                                  style="background:rgba(59,130,246,.12);color:#3b82f6;border:1px solid rgba(59,130,246,.2);font-size:10px;">
+                                                Tú
+                                            </span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td style="color:var(--text-secondary);font-size:13px;">
+                                {{ user.email }}
+                            </td>
+                            <td>
+                                {% if user.is_admin %}
+                                <span class="badge"
+                                      style="background:rgba(124,58,237,.12);color:#a78bfa;border:1px solid rgba(124,58,237,.2);">
+                                    <i class="bi bi-shield-fill me-1"></i>Admin
+                                </span>
+                                {% else %}
+                                <span class="badge"
+                                      style="background:rgba(100,116,139,.1);color:#94a3b8;border:1px solid rgba(100,116,139,.2);">
+                                    <i class="bi bi-person me-1"></i>Usuario
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td style="color:var(--text-muted);font-size:13px;">
+                                {{ user.created_at.strftime('%d/%m/%Y') }}
+                            </td>
+                            {% if current_user.is_admin %}
+                            <td style="text-align:right;padding-right:20px;">
+                                {% if user.id != current_user.id %}
+                                <button class="btn btn-sm btn-outline-danger delete-user"
+                                        data-id="{{ user.id }}"
+                                        data-name="{{ user.username }}">
+                                    <i class="bi bi-trash3 me-1"></i>Eliminar
+                                </button>
+                                {% else %}
+                                <span style="color:var(--text-muted);font-size:12px;">—</span>
+                                {% endif %}
+                            </td>
+                            {% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state" style="padding:48px;">
+                    <i class="bi bi-people d-block" style="font-size:40px;margin-bottom:16px;opacity:.3;"></i>
+                    <p>No hay usuarios registrados</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== DELETE USER MODAL ===== -->
+<div class="modal fade" id="deleteUserModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-person-x me-2" style="color:var(--danger)"></i>
+                    Eliminar Usuario
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>¿Eliminar la cuenta de <strong id="deleteUserName"></strong>?</p>
+                <div class="warning-box mt-3">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <div>El usuario perderá acceso inmediatamente. Esta acción no se puede deshacer.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-danger" id="confirmDeleteUserBtn">
+                    <i class="bi bi-person-x me-2"></i>Eliminar usuario
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

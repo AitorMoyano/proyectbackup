@@ -20,9 +20,5 @@ def create_app():
     
     from app import routes, models
     app.register_blueprint(routes.bp)
-    
-    @app.before_first_request
-    def create_tables():
-        db.create_all()
-    
+
     return app
