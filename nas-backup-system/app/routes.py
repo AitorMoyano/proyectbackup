@@ -58,8 +58,10 @@ def create_backup():
     os.makedirs(current_app.config['BACKUP_DIR'], exist_ok=True)
     os.makedirs(backup_path, exist_ok=True)
     
-    # Backup con rsync
-    cmd = f"sudo rsync -a --progress {client_ip}::{data.get('share', 'backup')}/ {backup_path}"
+    # Backup con rsync sobre SSH
+    ssh_user = data.get('ssh_user', 'servidornas')
+    ssh_path = data.get('path', '/home/')
+    cmd = f"rsync -avz -e 'ssh -o StrictHostKeyChecking=no' {ssh_user}@{client_ip}:{ssh_path} {backup_path}/"
     result = run_command(cmd)
     
     backup = Backup(
