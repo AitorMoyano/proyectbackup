@@ -11,12 +11,14 @@ APP_USER="www-data"
 echo "[1/7] Instalando dependencias del sistema..."
 sudo apt update -qq
 sudo apt install -y python3 python3-pip python3-venv nginx mariadb-server \
-                    rsync nmap mdadm lsblk net-tools sudo
+                    rsync nmap mdadm lsblk net-tools sudo samba
 
 echo "[2/7] Creando directorios NAS..."
 sudo mkdir -p /nas/{backups,raid,uploads}
 sudo chown -R $APP_USER:$APP_USER /nas
 sudo chmod -R 755 /nas
+sudo mkdir -p /srv/nas/shares
+sudo chmod 777 /srv/nas/shares
 
 echo "[3/7] Instalando la aplicación en $INSTALL_DIR..."
 sudo mkdir -p $INSTALL_DIR

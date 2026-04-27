@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from app import db
-from app.models import User, Backup, Raid, Group
+from app.models import User, Backup, Raid, Group, Share
 from app.utils import *
 from werkzeug.security import generate_password_hash
 from datetime import datetime
@@ -49,32 +49,37 @@ def backups():
 @login_required
 def create_backup():
     data = request.json
-    client_ip = data['client_ip']
-    client_name = data['client_name']
-    
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    share_id = data.get('share_id')
+
+    if share_id:
+        share = Share.query.get_or_404(share_id)
+        source_path = share.path
+        client_name = share.name
+        client_ip   = 'localhost'
+    else:
+        source_path = data.get('path', '/srv/nas/shares/')
+        client_name = data.get('client_name', 'manual')
+        client_ip   = 'localhost'
+
+    timestamp   = datetime.now().strftime('%Y%m%d_%H%M%S')
     backup_path = f"{current_app.config['BACKUP_DIR']}/{client_name}_{timestamp}"
-    
+
     os.makedirs(current_app.config['BACKUP_DIR'], exist_ok=True)
     os.makedirs(backup_path, exist_ok=True)
-    
-    # Backup con rsync sobre SSH
-    ssh_user = data.get('ssh_user', 'servidornas')
-    ssh_path = data.get('path', '/home/')
-    cmd = f"rsync -avz -e 'ssh -o StrictHostKeyChecking=no' {ssh_user}@{client_ip}:{ssh_path} {backup_path}/"
+
+    cmd    = f"rsync -av {source_path}/ {backup_path}/"
     result = run_command(cmd)
-    
+
     backup = Backup(
-        client_ip=client_ip,
-        client_name=client_name,
-        backup_path=backup_path,
-        size=get_folder_size(backup_path),
-        status='completed' if result['success'] else 'failed'
+        client_ip   = client_ip,
+        client_name = client_name,
+        backup_path = backup_path,
+        size        = get_folder_size(backup_path),
+        status      = 'completed' if result['success'] else 'failed'
     )
     db.session.add(backup)
     db.session.commit()
-    
-    return jsonify(result)
+    return jsonify({'success': result['success'], 'error': result.get('error', ''), 'id': backup.id})
 
 @bp.route('/api/restore/<int:backup_id>', methods=['POST'])
 @login_required
@@ -238,3 +243,122 @@ def delete_group(group_id):
     db.session.delete(group)
     db.session.commit()
     return jsonify({'success': True})
+
+# ----------------------------------------------------------------
+# FILE STATION
+# ----------------------------------------------------------------
+@bp.route('/files')
+@login_required
+def files():
+    shares = Share.query.order_by(Share.name).all()
+    return render_template('files.html', shares=shares)
+
+@bp.route('/api/shares', methods=['POST'])
+@login_required
+def manage_shares():
+    if not current_user.is_admin:
+        return jsonify({'error': 'Acceso denegado'}), 403
+    data   = request.json
+    action = data.get('action')
+
+    if action == 'create':
+        name = data['name'].strip().replace(' ', '_')
+        if Share.query.filter_by(name=name).first():
+            return jsonify({'error': 'Ya existe un recurso compartido con ese nombre'}), 400
+        path = f"/srv/nas/shares/{name}"
+        share = Share(
+            name        = name,
+            path        = path,
+            description = data.get('description', ''),
+            is_public   = data.get('is_public', False),
+            read_only   = data.get('read_only', False)
+        )
+        db.session.add(share)
+        db.session.commit()
+        run_command(f"sudo mkdir -p {path}")
+        run_command(f"sudo chmod 775 {path}")
+        run_command(f"sudo chown nobody:nogroup {path}")
+        update_samba_config()
+        return jsonify({'success': True, 'id': share.id})
+
+    elif action == 'delete':
+        share = Share.query.get_or_404(data['share_id'])
+        run_command(f"sudo rm -rf {share.path}")
+        db.session.delete(share)
+        db.session.commit()
+        update_samba_config()
+        return jsonify({'success': True})
+
+    return jsonify({'error': 'Acción no válida'}), 400
+
+@bp.route('/api/files/browse')
+@login_required
+def browse_files():
+    path = request.args.get('path', '/srv/nas/shares')
+    real = os.path.realpath(path)
+    if not real.startswith('/srv/nas/shares'):
+        return jsonify({'error': 'Ruta no permitida'}), 403
+    if not os.path.isdir(real):
+        return jsonify({'error': 'No es un directorio'}), 404
+    entries = []
+    try:
+        for name in sorted(os.listdir(real)):
+            full = os.path.join(real, name)
+            stat = os.stat(full)
+            entries.append({
+                'name'     : name,
+                'path'     : full,
+                'is_dir'   : os.path.isdir(full),
+                'size'     : stat.st_size,
+                'modified' : datetime.fromtimestamp(stat.st_mtime).strftime('%d/%m/%Y %H:%M')
+            })
+    except PermissionError:
+        return jsonify({'error': 'Sin permisos para leer este directorio'}), 403
+    return jsonify({'path': real, 'entries': entries})
+
+@bp.route('/api/files/mkdir', methods=['POST'])
+@login_required
+def make_dir():
+    if not current_user.is_admin:
+        return jsonify({'error': 'Acceso denegado'}), 403
+    data = request.json
+    path = data.get('path', '').strip()
+    real = os.path.realpath(path)
+    if not real.startswith('/srv/nas/shares'):
+        return jsonify({'error': 'Ruta no permitida'}), 403
+    try:
+        os.makedirs(real, exist_ok=True)
+        return jsonify({'success': True})
+    except Exception as e:
+        result = run_command(f"sudo mkdir -p '{real}'")
+        return jsonify({'success': result['success'], 'error': result.get('error', '')})
+
+@bp.route('/api/files/delete', methods=['DELETE'])
+@login_required
+def delete_file_or_dir():
+    if not current_user.is_admin:
+        return jsonify({'error': 'Acceso denegado'}), 403
+    data = request.json
+    path = data.get('path', '').strip()
+    real = os.path.realpath(path)
+    if not real.startswith('/srv/nas/shares') or real == '/srv/nas/shares':
+        return jsonify({'error': 'Ruta no permitida'}), 403
+    result = run_command(f"sudo rm -rf '{real}'")
+    return jsonify({'success': result['success'], 'error': result.get('error', '')})
+
+@bp.route('/api/files/upload', methods=['POST'])
+@login_required
+def upload_file():
+    path = request.form.get('path', '/srv/nas/shares')
+    real = os.path.realpath(path)
+    if not real.startswith('/srv/nas/shares'):
+        return jsonify({'error': 'Ruta no permitida'}), 403
+    if 'file' not in request.files:
+        return jsonify({'error': 'No se envió ningún archivo'}), 400
+    f = request.files['file']
+    dest = os.path.join(real, f.filename)
+    try:
+        f.save(dest)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

@@ -52,3 +52,12 @@ class Raid(db.Model):
     status = db.Column(db.String(20), default='active')
     size = db.Column(db.BigInteger, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class Share(db.Model):
+    id          = db.Column(db.Integer, primary_key=True)
+    name        = db.Column(db.String(80), unique=True, nullable=False)
+    path        = db.Column(db.String(500), nullable=False)
+    description = db.Column(db.String(255), default='')
+    is_public   = db.Column(db.Boolean, default=False)
+    read_only   = db.Column(db.Boolean, default=False)
+    created_at  = db.Column(db.DateTime, default=datetime.utcnow)

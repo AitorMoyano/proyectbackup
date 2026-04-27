@@ -48,3 +48,45 @@ def get_folder_size(path):
     except:
         pass
     return total
+
+def update_samba_config():
+    """Regenera /etc/samba/smb.conf con los recursos compartidos de la BD"""
+    try:
+        from app.models import Share
+        import flask
+        app = flask.current_app._get_current_object()
+        with app.app_context():
+            shares = Share.query.all()
+    except Exception:
+        shares = []
+
+    lines = [
+        "[global]",
+        "   workgroup = WORKGROUP",
+        "   server string = NAS Backup Server",
+        "   netbios name = NASSERVER",
+        "   security = user",
+        "   map to guest = Bad User",
+        "   dns proxy = no",
+        "",
+    ]
+    for s in shares:
+        lines += [
+            f"[{s.name}]",
+            f"   path = {s.path}",
+            f"   comment = {s.description or s.name}",
+            f"   browseable = yes",
+            f"   read only = {'yes' if s.read_only else 'no'}",
+            f"   guest ok = {'yes' if s.is_public else 'no'}",
+            f"   create mask = 0664",
+            f"   directory mask = 0775",
+            "",
+        ]
+    config = "\n".join(lines)
+    try:
+        with open('/tmp/smb_nas.conf', 'w') as f:
+            f.write(config)
+        run_command("sudo cp /tmp/smb_nas.conf /etc/samba/smb.conf")
+        run_command("sudo systemctl reload smbd 2>/dev/null || sudo systemctl restart smbd 2>/dev/null")
+    except Exception:
+        pass
