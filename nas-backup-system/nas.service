@@ -1,14 +1,22 @@
+# nas.service — PLANTILLA de referencia
+# El deploy.sh genera el fichero real en /etc/systemd/system/nas-backup.service
+# con los valores correctos de $USER y $PROJECT_DIR detectados automáticamente.
+#
+# Para instalación manual, sustituye:
+#   <USER>        → tu usuario de sistema (ej: ubuntu, pi, servidornas)
+#   <PROJECT_DIR> → ruta absoluta al repositorio (ej: /home/ubuntu/nas-backup-system)
+
 [Unit]
-Description=NAS Home Flask App
+Description=NAS Backup System
 After=network.target
 
 [Service]
-User=servidornas
-WorkingDirectory=/home/servidornas/proyectbackup/nas-backup-system
-ExecStart=/home/servidornas/proyectbackup/nas-backup-system/venv/bin/python run.py
+User=<USER>
+WorkingDirectory=<PROJECT_DIR>
+EnvironmentFile=<PROJECT_DIR>/.env
+ExecStart=<PROJECT_DIR>/venv/bin/python run.py
 Restart=always
 RestartSec=5
-EnvironmentFile=/home/servidornas/proyectbackup/nas-backup-system/.env
 
 [Install]
 WantedBy=multi-user.target

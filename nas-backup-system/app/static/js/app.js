@@ -117,6 +117,39 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ----------------------------------------------------------------
+    // BACKUPS — New backup (from backups page modal)
+    // ----------------------------------------------------------------
+    var confirmNewBackupBtn = document.getElementById('confirmNewBackupBtn');
+    if (confirmNewBackupBtn) {
+        confirmNewBackupBtn.addEventListener('click', function () {
+            var shareId = (document.getElementById('backupShareSelect') || {}).value;
+            setLoading(this, true);
+            var self = this;
+            var body = shareId ? { share_id: parseInt(shareId) } : {};
+            fetch('/api/backup', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify(body)
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                hideModal('newBackupModal');
+                if (data.success) {
+                    showToast('Backup completado correctamente', 'success');
+                } else {
+                    showToast('Error en backup: ' + (data.error || 'No se pudo crear el backup'), 'danger');
+                }
+                setTimeout(function () { location.reload(); }, 2000);
+            })
+            .catch(function () {
+                showToast('Error de conexión con el servidor', 'danger');
+                setTimeout(function () { location.reload(); }, 2000);
+            })
+            .finally(function () { setLoading(self, false); });
+        });
+    }
+
+    // ----------------------------------------------------------------
     // BACKUPS — Restore
     // ----------------------------------------------------------------
     var pendingRestoreId = null;
@@ -153,7 +186,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             setLoading(this, true);
             var self = this;
-            fetch('/api/restore/' + pendingRestoreId, {
+            fetch('/api/backup/' + pendingRestoreId + '/restore', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body:    JSON.stringify({ target: target.trim() })

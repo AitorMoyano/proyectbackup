@@ -26,9 +26,9 @@
     <div class="col-6 col-xl-3">
         <div class="stat-card stat-yellow">
             <div class="stat-glow"></div>
-            <div class="stat-icon"><i class="bi bi-check-circle-fill"></i></div>
-            <div class="stat-value">{{ completed }}</div>
-            <div class="stat-label">Completados</div>
+            <div class="stat-icon"><i class="bi bi-hdd-network-fill"></i></div>
+            <div class="stat-value">{{ shares|length }}</div>
+            <div class="stat-label">Recursos Compartidos</div>
         </div>
     </div>
     <div class="col-6 col-xl-3">
@@ -38,6 +38,17 @@
             <div class="stat-value">{{ raids|length }}</div>
             <div class="stat-label">RAIDs Activos</div>
         </div>
+    </div>
+</div>
+
+<!-- ===== SERVER INFO ===== -->
+<div class="info-box mb-4" style="font-size:13px;">
+    <i class="bi bi-server" style="color:var(--accent);font-size:16px;"></i>
+    <div>
+        <strong>Este servidor NAS:</strong>
+        <code style="margin-left:8px;">{{ server_ip }}</code>
+        &mdash; Los clientes pueden montar recursos vía
+        <code>smb://{{ server_ip }}/&lt;nombre-recurso&gt;</code>
     </div>
 </div>
 
@@ -68,11 +79,6 @@
                             </div>
                             <div class="client-ip">{{ client.ip }}</div>
                         </div>
-                        <button class="btn btn-outline-primary btn-sm backup-btn"
-                                data-ip="{{ client.ip }}"
-                                data-name="{{ client.name }}">
-                            <i class="bi bi-archive me-1"></i>Backup
-                        </button>
                     </div>
                     {% endfor %}
                 </div>
@@ -80,7 +86,7 @@
                 <div class="empty-state">
                     <i class="bi bi-wifi-off d-block"></i>
                     <p>No se encontraron clientes en la red</p>
-                    <small>Asegúrate de que nmap esté instalado y ejecutándose como sudoer</small>
+                    <small>Asegúrate de que nmap esté instalado y el servidor tenga acceso sudo</small>
                 </div>
                 {% endif %}
             </div>
@@ -107,7 +113,7 @@
                         <i class="bi bi-archive"></i>
                     </div>
                     <div class="client-info">
-                        <div class="client-name">{{ backup.client_name }}</div>
+                        <div class="client-name">{{ backup.source_name }}</div>
                         <div class="client-ip">
                             {{ backup.created_at.strftime('%d/%m/%Y %H:%M') }}
                         </div>
@@ -125,39 +131,9 @@
                 <div class="empty-state">
                     <i class="bi bi-archive d-block"></i>
                     <p>No hay backups aún</p>
-                    <small>Selecciona un cliente para crear el primer backup</small>
+                    <small>Ve a Ficheros y usa el botón de backup en un recurso compartido</small>
                 </div>
                 {% endif %}
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- ===== BACKUP MODAL ===== -->
-<div class="modal fade" id="backupModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="bi bi-archive me-2" style="color:var(--accent)"></i>
-                    Crear Backup
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>¿Crear backup de <strong id="backupClientName"></strong>
-                   (<code id="backupClientIp"></code>)?</p>
-                <div class="info-box mt-3">
-                    <i class="bi bi-info-circle"></i>
-                    <div>Se usará rsync para copiar los datos del cliente al servidor NAS.
-                         La operación puede tardar varios minutos.</div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button class="btn btn-primary" id="confirmBackupBtn">
-                    <i class="bi bi-archive me-2"></i>Iniciar Backup
-                </button>
             </div>
         </div>
     </div>

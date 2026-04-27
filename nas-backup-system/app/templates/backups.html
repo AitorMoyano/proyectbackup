@@ -3,6 +3,12 @@
 {% block page_title %}Backups{% endblock %}
 {% block page_subtitle %}Gestión y restauración de copias de seguridad{% endblock %}
 
+{% block header_actions %}
+<button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#newBackupModal">
+    <i class="bi bi-archive me-1"></i>Nuevo Backup
+</button>
+{% endblock %}
+
 {% block content %}
 
 <div class="card">
@@ -12,6 +18,9 @@
         <span class="ms-2" style="color:var(--text-muted);font-weight:400;font-size:13px;">
             {{ backups|length }} registros
         </span>
+        <button class="btn btn-sm btn-primary ms-auto" data-bs-toggle="modal" data-bs-target="#newBackupModal">
+            <i class="bi bi-archive me-1"></i>Nuevo Backup
+        </button>
     </div>
     <div class="card-body p-0">
         {% if backups %}
@@ -19,8 +28,7 @@
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
-                        <th style="padding-left:20px;">Cliente</th>
-                        <th>IP</th>
+                        <th style="padding-left:20px;">Fuente</th>
                         <th>Ruta</th>
                         <th>Tamaño</th>
                         <th>Estado</th>
@@ -34,12 +42,11 @@
                         <td style="padding-left:20px;">
                             <div class="d-flex align-items-center gap-2">
                                 <div class="client-avatar" style="width:30px;height:30px;border-radius:8px;font-size:13px;flex-shrink:0;">
-                                    <i class="bi bi-pc-display"></i>
+                                    <i class="bi bi-archive"></i>
                                 </div>
-                                <strong>{{ backup.client_name }}</strong>
+                                <strong>{{ backup.source_name }}</strong>
                             </div>
                         </td>
-                        <td><code>{{ backup.client_ip }}</code></td>
                         <td>
                             <span style="color:var(--text-muted);font-size:12px;font-family:monospace;">
                                 {{ backup.backup_path|truncate(38) }}
@@ -84,14 +91,14 @@
                             <div class="d-flex gap-1 justify-content-end">
                                 <button class="btn btn-sm btn-outline-success restore-btn"
                                         data-id="{{ backup.id }}"
-                                        data-name="{{ backup.client_name }}"
+                                        data-name="{{ backup.source_name }}"
                                         title="Restaurar backup">
                                     <i class="bi bi-arrow-counterclockwise me-1"></i>Restaurar
                                 </button>
                                 {% if current_user.is_admin %}
                                 <button class="btn btn-sm btn-outline-danger delete-backup"
                                         data-id="{{ backup.id }}"
-                                        data-name="{{ backup.client_name }}"
+                                        data-name="{{ backup.source_name }}"
                                         title="Eliminar backup">
                                     <i class="bi bi-trash3"></i>
                                 </button>
@@ -107,9 +114,46 @@
         <div class="empty-state" style="padding:64px 24px;">
             <i class="bi bi-archive d-block" style="font-size:48px;margin-bottom:16px;opacity:.3;"></i>
             <p style="font-size:15px;margin-bottom:8px;">No hay backups registrados</p>
-            <small>Ve al Dashboard y selecciona un cliente para crear el primer backup</small>
+            <small>Usa el botón "Nuevo Backup" para crear una copia de seguridad de un recurso compartido</small>
         </div>
         {% endif %}
+    </div>
+</div>
+
+<!-- ===== NEW BACKUP MODAL ===== -->
+<div class="modal fade" id="newBackupModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-archive me-2" style="color:var(--accent)"></i>
+                    Nuevo Backup
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Recurso a respaldar</label>
+                    <select id="backupShareSelect" class="form-select">
+                        <option value="">— Backup completo (todos los recursos) —</option>
+                        {% for share in shares %}
+                        <option value="{{ share.id }}">{{ share.name }} &mdash; {{ share.path }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="info-box mt-3">
+                    <i class="bi bi-info-circle"></i>
+                    <div>Se usará rsync para copiar el contenido del recurso seleccionado al directorio de backups.
+                         La operación puede tardar varios minutos.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-primary" id="confirmNewBackupBtn">
+                    <i class="bi bi-archive me-2"></i>Iniciar Backup
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 

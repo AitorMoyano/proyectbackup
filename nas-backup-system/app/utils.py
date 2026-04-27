@@ -1,92 +1,95 @@
-import subprocess
-import os
-import psutil
-import shutil
+import subprocess, os, socket
 from datetime import datetime
 
-def run_command(cmd):
-    """Ejecuta comando con sudo y retorna resultado"""
+def run_cmd(cmd, timeout=120):
     try:
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=300)
-        return {'success': result.returncode == 0, 'output': result.stdout, 'error': result.stderr}
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+        return {'success': r.returncode == 0, 'output': r.stdout, 'error': r.stderr}
+    except subprocess.TimeoutExpired:
+        return {'success': False, 'error': 'Tiempo de espera agotado', 'output': ''}
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return {'success': False, 'error': str(e), 'output': ''}
 
-def get_network_clients():
-    """Obtiene clientes en la red"""
+def get_server_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return '127.0.0.1'
+
+def get_network_clients(network_range):
     clients = []
-    network = os.environ.get('NETWORK_RANGE', '192.168.56.0/24')
-    result = run_command(f"sudo nmap -sn {network} | grep 'Nmap scan report' -A 2")
-    if result['success']:
-        # Parsear resultado nmap (simplificado)
-        lines = result['output'].split('\n')
-        for line in lines:
+    r = run_cmd(f"sudo nmap -sn --host-timeout 2s {network_range}", timeout=60)
+    if r['success']:
+        lines = r['output'].split('\n')
+        for i, line in enumerate(lines):
             if 'Nmap scan report' in line:
-                ip = line.split()[-1]
-                clients.append({'ip': ip, 'name': f'Cliente-{ip.split(".")[-1]}'})
+                ip = line.split()[-1].strip('()')
+                name = f"Cliente-{ip.split('.')[-1]}"
+                clients.append({'ip': ip, 'name': name})
     return clients
 
 def get_disks():
-    """Obtiene discos disponibles"""
-    result = run_command("lsblk -dno NAME,SIZE,TYPE | grep disk")
+    r = run_cmd("lsblk -dno NAME,SIZE,TYPE | grep disk")
     disks = []
-    if result['success']:
-        for line in result['output'].split('\n'):
-            if line.strip():
-                parts = line.split()
+    if r['success']:
+        for line in r['output'].split('\n'):
+            parts = line.split()
+            if len(parts) >= 2:
                 disks.append({'name': f'/dev/{parts[0]}', 'size': parts[1]})
     return disks
 
 def get_folder_size(path):
-    """Calcula tamaño de carpeta"""
     total = 0
     try:
-        for dirpath, dirnames, filenames in os.walk(path):
-            for f in filenames:
-                fp = os.path.join(dirpath, f)
-                total += os.path.getsize(fp)
-    except:
-        pass
+        for dp, dn, fns in os.walk(path):
+            for f in fns:
+                try: total += os.path.getsize(os.path.join(dp, f))
+                except: pass
+    except: pass
     return total
 
-def update_samba_config():
-    """Regenera /etc/samba/smb.conf con los recursos compartidos de la BD"""
-    try:
-        from app.models import Share
-        import flask
-        app = flask.current_app._get_current_object()
-        with app.app_context():
-            shares = Share.query.all()
-    except Exception:
-        shares = []
+def format_bytes(b):
+    for unit in ['B','KB','MB','GB','TB']:
+        if b < 1024: return f"{b:.1f} {unit}"
+        b /= 1024
+    return f"{b:.1f} PB"
 
+def rebuild_samba(shares, server_ip):
+    """Write /etc/samba/smb.conf and reload smbd"""
     lines = [
-        "[global]",
-        "   workgroup = WORKGROUP",
-        "   server string = NAS Backup Server",
-        "   netbios name = NASSERVER",
-        "   security = user",
-        "   map to guest = Bad User",
-        "   dns proxy = no",
-        "",
+        '[global]',
+        '   workgroup = WORKGROUP',
+        f'   server string = NAS Server ({server_ip})',
+        '   netbios name = NASSERVER',
+        '   security = user',
+        '   map to guest = Bad User',
+        '   log level = 1',
+        '   max log size = 1000',
+        '',
     ]
     for s in shares:
         lines += [
-            f"[{s.name}]",
-            f"   path = {s.path}",
-            f"   comment = {s.description or s.name}",
-            f"   browseable = yes",
-            f"   read only = {'yes' if s.read_only else 'no'}",
-            f"   guest ok = {'yes' if s.is_public else 'no'}",
-            f"   create mask = 0664",
-            f"   directory mask = 0775",
-            "",
+            f'[{s.name}]',
+            f'   path = {s.path}',
+            f'   comment = {s.description or s.name}',
+            '   browseable = yes',
+            f'   read only = {"yes" if s.read_only else "no"}',
+            f'   guest ok = {"yes" if s.is_public else "no"}',
+            '   create mask = 0664',
+            '   directory mask = 0775',
+            '   force create mode = 0664',
+            '   force directory mode = 0775',
+            '',
         ]
-    config = "\n".join(lines)
+    config = '\n'.join(lines)
     try:
-        with open('/tmp/smb_nas.conf', 'w') as f:
+        with open('/tmp/nas_smb.conf', 'w') as f:
             f.write(config)
-        run_command("sudo cp /tmp/smb_nas.conf /etc/samba/smb.conf")
-        run_command("sudo systemctl reload smbd 2>/dev/null || sudo systemctl restart smbd 2>/dev/null")
+        run_cmd('sudo cp /tmp/nas_smb.conf /etc/samba/smb.conf')
+        run_cmd('sudo systemctl reload smbd || sudo systemctl restart smbd')
     except Exception:
         pass

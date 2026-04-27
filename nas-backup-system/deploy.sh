@@ -1,111 +1,91 @@
 #!/bin/bash
 set -e
 
+# ============================================================
+#  NAS Backup System — Deploy automático
+#  Uso: sudo ./deploy.sh
+# ============================================================
+
+# ── Auto-detect environment ──────────────────────────────────
+DEPLOY_USER=$(logname 2>/dev/null || whoami)
+SERVER_IP=$(hostname -I | awk '{print $1}')
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SECRET_KEY=$(openssl rand -hex 32)
+
+echo ""
 echo "============================================"
 echo "  NAS Backup System — Deploy"
 echo "============================================"
+echo "  Usuario:    $DEPLOY_USER"
+echo "  IP:         $SERVER_IP"
+echo "  Directorio: $PROJECT_DIR"
+echo "============================================"
+echo ""
 
-INSTALL_DIR="/opt/nas-home"
-APP_USER="www-data"
+# ── [1/8] Dependencias del sistema ──────────────────────────
+echo "🔧 [1/8] Instalando dependencias del sistema..."
+apt-get update -qq
+apt-get install -y \
+    python3 python3-pip python3-venv \
+    nginx rsync nmap mdadm \
+    samba samba-common-bin \
+    2>/dev/null
 
-echo "[1/7] Instalando dependencias del sistema..."
-sudo apt update -qq
-sudo apt install -y python3 python3-pip python3-venv nginx mariadb-server \
-                    rsync nmap mdadm lsblk net-tools sudo samba
+echo "    ✓ Dependencias instaladas"
 
-echo "[2/7] Creando directorios NAS..."
-sudo mkdir -p /nas/{backups,raid,uploads}
-sudo chown -R $APP_USER:$APP_USER /nas
-sudo chmod -R 755 /nas
-sudo mkdir -p /srv/nas/shares
-sudo chmod 777 /srv/nas/shares
+# ── [2/8] Directorios NAS ────────────────────────────────────
+echo "📁 [2/8] Creando directorios NAS..."
+mkdir -p /srv/nas/shares /srv/nas/backups
+chown -R "$DEPLOY_USER":"$DEPLOY_USER" /srv/nas
+chmod -R 775 /srv/nas
+echo "    ✓ /srv/nas/shares y /srv/nas/backups creados"
 
-echo "[3/7] Instalando la aplicación en $INSTALL_DIR..."
-sudo mkdir -p $INSTALL_DIR
-sudo cp -r . $INSTALL_DIR/
-sudo chown -R $APP_USER:$APP_USER $INSTALL_DIR
-
-echo "[4/7] Configurando entorno virtual Python..."
-sudo -u $APP_USER python3 -m venv $INSTALL_DIR/venv
-sudo -u $APP_USER $INSTALL_DIR/venv/bin/pip install --quiet --upgrade pip
-sudo -u $APP_USER $INSTALL_DIR/venv/bin/pip install --quiet -r $INSTALL_DIR/requirements.txt
-
-echo "[5/7] Configurando base de datos..."
-sudo systemctl start mariadb
-sudo systemctl enable mariadb
-
-if [ ! -f "$INSTALL_DIR/.env" ]; then
-    DB_PASS=$(openssl rand -base64 16 | tr -dc 'A-Za-z0-9' | head -c 20)
-    SECRET_KEY=$(openssl rand -base64 32)
-    sudo tee $INSTALL_DIR/.env > /dev/null <<EOF
-SECRET_KEY=$SECRET_KEY
-DATABASE_URL=mysql+pymysql://nas_user:${DB_PASS}@localhost/backup_system
-EOF
-    sudo chown $APP_USER:$APP_USER $INSTALL_DIR/.env
-    sudo chmod 600 $INSTALL_DIR/.env
-else
-    DB_PASS=$(grep DATABASE_URL $INSTALL_DIR/.env | grep -oP '(?<=:)[^@]+(?=@)')
+# ── [3/8] Entorno virtual Python ────────────────────────────
+echo "🐍 [3/8] Configurando entorno virtual Python..."
+if [ ! -d "$PROJECT_DIR/venv" ]; then
+    sudo -u "$DEPLOY_USER" python3 -m venv "$PROJECT_DIR/venv"
 fi
+sudo -u "$DEPLOY_USER" "$PROJECT_DIR/venv/bin/pip" install --quiet --upgrade pip
+sudo -u "$DEPLOY_USER" "$PROJECT_DIR/venv/bin/pip" install --quiet -r "$PROJECT_DIR/requirements.txt"
+echo "    ✓ venv configurado en $PROJECT_DIR/venv"
 
-sudo mysql -u root <<SQL
-CREATE DATABASE IF NOT EXISTS backup_system CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-CREATE USER IF NOT EXISTS 'nas_user'@'localhost' IDENTIFIED BY '${DB_PASS}';
-GRANT ALL PRIVILEGES ON backup_system.* TO 'nas_user'@'localhost';
-FLUSH PRIVILEGES;
-SQL
+# ── [4/8] Fichero .env ───────────────────────────────────────
+echo "⚙️  [4/8] Generando fichero .env..."
+cat > "$PROJECT_DIR/.env" <<EOF
+SECRET_KEY=$SECRET_KEY
+DATABASE_URL=sqlite:///nas.db
+BACKUP_DIR=/srv/nas/backups
+SHARES_DIR=/srv/nas/shares
+SERVER_IP=$SERVER_IP
+FLASK_ENV=production
+EOF
+chown "$DEPLOY_USER":"$DEPLOY_USER" "$PROJECT_DIR/.env"
+chmod 600 "$PROJECT_DIR/.env"
+echo "    ✓ .env creado (SECRET_KEY aleatoria)"
 
-echo "[6/7] Inicializando base de datos..."
-cd $INSTALL_DIR
-sudo -u $APP_USER bash -c "
-    source venv/bin/activate
-    export FLASK_APP=run.py
-    if [ ! -d 'migrations' ]; then
-        flask db init
-        flask db migrate -m 'initial'
-    fi
-    flask db upgrade || python run.py & sleep 3 && kill %1 2>/dev/null || true
-"
+# ── [5/8] Inicializar base de datos ─────────────────────────
+echo "🗃️  [5/8] Inicializando base de datos..."
+cd "$PROJECT_DIR"
+sudo -u "$DEPLOY_USER" bash -c "
+    cd '$PROJECT_DIR'
+    '$PROJECT_DIR/venv/bin/python' run.py &
+    sleep 3
+    kill %1 2>/dev/null || true
+" 2>/dev/null || true
+echo "    ✓ Base de datos SQLite inicializada"
 
-echo "[7/7] Configurando Nginx y Systemd..."
-sudo tee /etc/nginx/sites-available/nas > /dev/null <<'NGINX'
-server {
-    listen 80;
-    server_name _;
-    client_max_body_size 100M;
-
-    location /static/ {
-        alias /opt/nas-home/app/static/;
-        expires 7d;
-        add_header Cache-Control "public, immutable";
-    }
-
-    location / {
-        proxy_pass         http://127.0.0.1:5000;
-        proxy_set_header   Host $host;
-        proxy_set_header   X-Real-IP $remote_addr;
-        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_read_timeout 300s;
-    }
-}
-NGINX
-
-sudo ln -sf /etc/nginx/sites-available/nas /etc/nginx/sites-enabled/
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t && sudo systemctl restart nginx
-sudo systemctl enable nginx
-
-sudo tee /etc/systemd/system/nas.service > /dev/null <<EOF
+# ── [6/8] Servicio systemd ───────────────────────────────────
+echo "🔄 [6/8] Configurando servicio systemd..."
+cat > /etc/systemd/system/nas-backup.service <<EOF
 [Unit]
 Description=NAS Backup System
-After=network.target mariadb.service
-Requires=mariadb.service
+After=network.target
 
 [Service]
-User=$APP_USER
-WorkingDirectory=$INSTALL_DIR
-EnvironmentFile=$INSTALL_DIR/.env
-Environment="PATH=$INSTALL_DIR/venv/bin"
-ExecStart=$INSTALL_DIR/venv/bin/python run.py
+User=$DEPLOY_USER
+WorkingDirectory=$PROJECT_DIR
+EnvironmentFile=$PROJECT_DIR/.env
+ExecStart=$PROJECT_DIR/venv/bin/python run.py
 Restart=always
 RestartSec=5
 
@@ -113,17 +93,77 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-sudo systemctl daemon-reload
-sudo systemctl enable nas.service
-sudo systemctl restart nas.service
+systemctl daemon-reload
+systemctl enable nas-backup.service
+systemctl restart nas-backup.service
+echo "    ✓ Servicio nas-backup.service activo"
 
-SERVER_IP=$(hostname -I | awk '{print $1}')
+# ── [7/8] Nginx ──────────────────────────────────────────────
+echo "🌐 [7/8] Configurando Nginx..."
+cat > /etc/nginx/sites-available/nas-backup <<EOF
+server {
+    listen 80;
+    server_name _;
+    client_max_body_size 500M;
+
+    location /static/ {
+        alias $PROJECT_DIR/app/static/;
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location / {
+        proxy_pass         http://127.0.0.1:5000;
+        proxy_set_header   Host \$host;
+        proxy_set_header   X-Real-IP \$remote_addr;
+        proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+}
+EOF
+
+ln -sf /etc/nginx/sites-available/nas-backup /etc/nginx/sites-enabled/nas-backup
+rm -f /etc/nginx/sites-enabled/default
+nginx -t && systemctl reload nginx
+systemctl enable nginx
+echo "    ✓ Nginx configurado y recargado"
+
+# ── [8/8] Samba (configuración base) ────────────────────────
+echo "📂 [8/8] Configurando Samba base..."
+cat > /etc/samba/smb.conf <<EOF
+[global]
+   workgroup = WORKGROUP
+   server string = NAS Server ($SERVER_IP)
+   netbios name = NASSERVER
+   security = user
+   map to guest = Bad User
+   log level = 1
+   max log size = 1000
+EOF
+
+systemctl enable smbd nmbd 2>/dev/null || true
+systemctl restart smbd nmbd 2>/dev/null || true
+echo "    ✓ Samba configurado (los recursos se gestionan desde la app)"
+
+# ── Sudoers para comandos NAS ────────────────────────────────
+echo "$DEPLOY_USER ALL=(ALL) NOPASSWD: /usr/bin/rsync, /usr/sbin/mdadm, /usr/bin/nmap, /bin/cp, /bin/mkdir, /bin/chmod, /bin/chown, /bin/rm, /usr/bin/tee, /bin/systemctl reload smbd, /bin/systemctl restart smbd" \
+    > /etc/sudoers.d/nas-backup
+chmod 440 /etc/sudoers.d/nas-backup
+echo "    ✓ Sudoers configurado para $DEPLOY_USER"
+
+# ── Resumen ──────────────────────────────────────────────────
 echo ""
 echo "============================================"
 echo "  ✅  Deploy completado con éxito"
 echo "============================================"
-echo "  🌐  URL:        http://${SERVER_IP}"
-echo "  👤  Usuario:    root"
-echo "  🔑  Contraseña: root"
-echo "  ⚠️  Cambia la contraseña tras el primer login"
+echo "  🌐  URL:         http://${SERVER_IP}"
+echo "  👤  Usuario:     root"
+echo "  🔑  Contraseña:  root"
+echo "  📁  Shares:      /srv/nas/shares"
+echo "  💾  Backups:     /srv/nas/backups"
+echo "  📡  Samba:       smb://${SERVER_IP}/<recurso>"
+echo ""
+echo "  ⚠️  Cambia la contraseña root tras el primer login"
 echo "============================================"
+echo ""
