@@ -122,14 +122,12 @@ document.addEventListener('DOMContentLoaded', function () {
     var confirmNewBackupBtn = document.getElementById('confirmNewBackupBtn');
     if (confirmNewBackupBtn) {
         confirmNewBackupBtn.addEventListener('click', function () {
-            var shareId = (document.getElementById('backupShareSelect') || {}).value;
             setLoading(this, true);
             var self = this;
-            var body = shareId ? { share_id: parseInt(shareId) } : {};
             fetch('/api/backup', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify(body)
+                body:    JSON.stringify({})
             })
             .then(function (r) { return r.json(); })
             .then(function (data) {
@@ -560,72 +558,100 @@ document.addEventListener('DOMContentLoaded', function () {
     // ----------------------------------------------------------------
     var currentBrowsePath = null;
 
-    // Browse a share when clicking on it
-    document.querySelectorAll('.browse-share').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var path = this.dataset.path;
-            document.querySelectorAll('.share-item').forEach(function(el) { el.classList.remove('active'); });
-            var item = btn.closest('.share-item');
-            if (item) item.classList.add('active');
-            loadDirectory(path);
-        });
-    });
+    function formatBytes(b) {
+        if (b < 1024) return b + ' B';
+        if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+        if (b < 1073741824) return (b/1048576).toFixed(1) + ' MB';
+        return (b/1073741824).toFixed(2) + ' GB';
+    }
 
     function loadDirectory(path) {
         currentBrowsePath = path;
-        var explorer = document.getElementById('fileExplorer');
+        var explorer   = document.getElementById('fileExplorer');
         var breadcrumb = document.getElementById('fileBreadcrumb');
+        var title      = document.getElementById('explorerTitle');
+        var fileCount  = document.getElementById('fileCount');
         if (!explorer) return;
 
-        explorer.innerHTML = '<tr><td colspan="5" class="text-center py-3"><span class="spinner-border spinner-border-sm me-2"></span>Cargando...</td></tr>';
+        explorer.innerHTML = '<tr><td colspan="5" class="text-center py-4">' +
+            '<span class="spinner-border spinner-border-sm me-2"></span>Cargando...</td></tr>';
 
         fetch('/api/files/browse?path=' + encodeURIComponent(path))
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.error) { showToast(data.error, 'danger'); return; }
 
+            // Título del explorador
+            if (title) {
+                var lastPart = data.path.split('/').filter(Boolean).pop() || 'raíz';
+                title.textContent = lastPart;
+            }
+
             // Breadcrumb
             if (breadcrumb) {
-                var base = '/srv/nas/shares';
-                var rel  = data.path.replace(base, '') || '/';
+                var fsd   = document.getElementById('fileStationData');
+                var base  = fsd ? fsd.dataset.sharesDir : '/srv/nas/shares';
+                var rel   = data.path.replace(base, '') || '/';
                 var parts = rel.split('/').filter(Boolean);
-                var html = '<span class="crumb" data-path="' + base + '">shares</span>';
+                var html  = '<i class="bi bi-hdd-network me-1" style="color:var(--text-muted);"></i>' +
+                            '<span class="crumb" data-path="' + base + '" title="Raíz de almacenamiento">nas</span>';
                 var acc = base;
                 parts.forEach(function(p) {
                     acc += '/' + p;
                     var isCurrent = acc === data.path;
                     html += '<span class="sep">/</span>';
-                    html += '<span class="crumb' + (isCurrent ? ' current' : '') + '" data-path="' + acc + '">' + p + '</span>';
+                    html += '<span class="crumb' + (isCurrent ? ' current' : '') +
+                            '" data-path="' + acc + '">' + p + '</span>';
                 });
                 breadcrumb.innerHTML = html;
                 breadcrumb.querySelectorAll('.crumb:not(.current)').forEach(function(c) {
+                    c.style.cursor = 'pointer';
                     c.addEventListener('click', function() { loadDirectory(this.dataset.path); });
                 });
             }
 
-            // File list
+            // Contador
+            if (fileCount) {
+                fileCount.textContent = data.entries.length
+                    ? data.entries.length + ' elemento' + (data.entries.length !== 1 ? 's' : '')
+                    : '';
+            }
+
+            // Vacío
             if (data.entries.length === 0) {
-                explorer.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4"><i class="bi bi-folder2-open me-2"></i>Carpeta vacía</td></tr>';
+                explorer.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-5">' +
+                    '<i class="bi bi-folder2-open d-block mb-2" style="font-size:2rem;opacity:.3;"></i>' +
+                    'Carpeta vacía — sube tu primer archivo</td></tr>';
                 return;
             }
+
+            // Filas
             var rows = '';
-            data.entries.forEach(function(e) {
-                var icon   = e.is_dir ? '<i class="bi bi-folder-fill file-icon dir"></i>' : '<i class="bi bi-file-earmark file-icon file"></i>';
-                var size   = e.is_dir ? '—' : formatBytes(e.size);
+            // Carpetas primero, luego ficheros
+            var dirs  = data.entries.filter(function(e){ return  e.is_dir; });
+            var files = data.entries.filter(function(e){ return !e.is_dir; });
+            dirs.concat(files).forEach(function(e) {
+                var icon   = e.is_dir
+                    ? '<i class="bi bi-folder-fill" style="color:var(--warning);font-size:1rem;"></i>'
+                    : '<i class="bi bi-file-earmark" style="color:var(--text-muted);font-size:1rem;"></i>';
+                var size   = e.is_dir ? '<span style="color:var(--text-muted);">—</span>' : formatBytes(e.size);
                 var nameEl = e.is_dir
-                    ? '<a href="#" class="text-warning fw-semibold entry-dir" data-path="' + e.path + '">' + e.name + '</a>'
-                    : '<span>' + e.name + '</span>';
+                    ? '<a href="#" class="fw-semibold entry-dir" style="color:var(--warning);text-decoration:none;" data-path="' + e.path + '">' + e.name + '</a>'
+                    : '<span style="color:var(--text-primary);">' + e.name + '</span>';
                 rows += '<tr>' +
-                    '<td class="file-icon">' + icon + '</td>' +
+                    '<td style="width:36px;text-align:center;">' + icon + '</td>' +
                     '<td>' + nameEl + '</td>' +
                     '<td class="text-muted small">' + size + '</td>' +
-                    '<td class="text-muted small">' + e.modified + '</td>' +
-                    '<td><button class="btn btn-sm btn-outline-danger py-0 del-entry" data-path="' + e.path + '" data-name="' + e.name + '"><i class="bi bi-trash"></i></button></td>' +
-                    '</tr>';
+                    '<td class="text-muted small" style="white-space:nowrap;">' + e.modified + '</td>' +
+                    '<td style="text-align:right;">' +
+                        '<button class="btn btn-sm btn-outline-danger py-0 del-entry" ' +
+                            'data-path="' + e.path + '" data-name="' + e.name + '" title="Eliminar">' +
+                            '<i class="bi bi-trash"></i></button>' +
+                    '</td></tr>';
             });
             explorer.innerHTML = rows;
 
-            // Click on directory
+            // Navegar en carpetas
             explorer.querySelectorAll('.entry-dir').forEach(function(a) {
                 a.addEventListener('click', function(ev) {
                     ev.preventDefault();
@@ -633,13 +659,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
             });
 
-            // Delete buttons
+            // Botones eliminar
             explorer.querySelectorAll('.del-entry').forEach(function(btn) {
                 btn.addEventListener('click', function() {
-                    var p = this.dataset.path;
-                    var n = this.dataset.name;
-                    document.getElementById('deleteFileName').textContent = n;
-                    document.getElementById('deleteFilePath').value = p;
+                    document.getElementById('deleteFileName').textContent = this.dataset.name;
+                    document.getElementById('deleteFilePath').value = this.dataset.path;
                     var m = getModal('deleteFileModal');
                     if (m) m.show();
                 });
@@ -648,93 +672,25 @@ document.addEventListener('DOMContentLoaded', function () {
         .catch(function() { showToast('Error al cargar el directorio', 'danger'); });
     }
 
-    function formatBytes(b) {
-        if (b < 1024) return b + ' B';
-        if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
-        if (b < 1073741824) return (b/1048576).toFixed(1) + ' MB';
-        return (b/1073741824).toFixed(2) + ' GB';
-    }
+    // Auto-cargar la carpeta del usuario al entrar en la página
+    var fileStationData = document.getElementById('fileStationData');
+    if (fileStationData) {
+        var userHome = fileStationData.dataset.userHome;
+        if (userHome) loadDirectory(userHome);
 
-    // Create share
-    var createShareBtn = document.getElementById('createShareBtn');
-    if (createShareBtn) {
-        createShareBtn.addEventListener('click', function() {
-            var name   = (document.getElementById('shareName')   ||{}).value.trim();
-            var desc   = (document.getElementById('shareDesc')   ||{}).value.trim();
-            var pub    = (document.getElementById('sharePublic') ||{}).checked;
-            var ro     = (document.getElementById('shareRO')     ||{}).checked;
-            if (!name) { showToast('El nombre es obligatorio', 'warning'); return; }
-            setLoading(this, true);
-            var self = this;
-            fetch('/api/shares', {
-                method: 'POST',
-                headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({action:'create', name:name, description:desc, is_public:pub, read_only:ro})
-            })
-            .then(function(r){return r.json();})
-            .then(function(d){
-                setLoading(self, false);
-                hideModal('createShareModal');
-                if (d.success) { showToast('Recurso compartido creado', 'success'); setTimeout(function(){location.reload();}, 1000); }
-                else showToast('Error: ' + (d.error||''), 'danger');
-            })
-            .catch(function(){ setLoading(self, false); showToast('Error de conexión','danger'); });
-        });
-    }
-
-    // Delete share
-    document.querySelectorAll('.delete-share').forEach(function(btn){
-        btn.addEventListener('click', function(){
-            if (!confirm('¿Eliminar el recurso compartido "' + this.dataset.name + '" y todos sus ficheros?')) return;
-            fetch('/api/shares', {
-                method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({action:'delete', share_id: parseInt(this.dataset.id)})
-            })
-            .then(function(r){return r.json();})
-            .then(function(d){
-                if (d.success) { showToast('Recurso eliminado','success'); setTimeout(function(){location.reload();},800); }
-                else showToast('Error: '+(d.error||''), 'danger');
+        // Botón "Todos los usuarios" (solo admin)
+        var goToRootBtn = document.getElementById('goToRootBtn');
+        if (goToRootBtn) {
+            goToRootBtn.addEventListener('click', function() {
+                loadDirectory(fileStationData.dataset.sharesDir);
             });
-        });
-    });
-
-    // Backup share
-    document.querySelectorAll('.backup-share').forEach(function(btn){
-        btn.addEventListener('click', function(){
-            document.getElementById('backupShareId').value   = this.dataset.id;
-            document.getElementById('backupShareName').textContent = this.dataset.name;
-            var m = getModal('backupShareModal');
-            if (m) m.show();
-        });
-    });
-
-    var confirmBackupShareBtn = document.getElementById('confirmBackupShareBtn');
-    if (confirmBackupShareBtn) {
-        confirmBackupShareBtn.addEventListener('click', function(){
-            var id = document.getElementById('backupShareId').value;
-            setLoading(this, true);
-            var self = this;
-            fetch('/api/backup', {
-                method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({share_id: parseInt(id)})
-            })
-            .then(function(r){return r.json();})
-            .then(function(d){
-                setLoading(self, false);
-                hideModal('backupShareModal');
-                if (d.success) showToast('Backup completado correctamente','success');
-                else showToast('Error en backup: '+(d.error||''),'danger');
-                setTimeout(function(){location.reload();}, 1500);
-            })
-            .catch(function(){ setLoading(self, false); showToast('Error de conexión','danger'); });
-        });
+        }
     }
 
-    // Open/close mkdir modal
+    // Nueva carpeta
     var openMkdirBtn = document.getElementById('openMkdirBtn');
     if (openMkdirBtn) {
-        openMkdirBtn.addEventListener('click', function(){
-            if (!currentBrowsePath) { showToast('Selecciona un recurso compartido primero','warning'); return; }
+        openMkdirBtn.addEventListener('click', function() {
             var inp = document.getElementById('newFolderName');
             if (inp) inp.value = '';
             var m = getModal('mkdirModal');
@@ -742,90 +698,91 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Create folder
     var mkdirBtn = document.getElementById('mkdirBtn');
     if (mkdirBtn) {
-        mkdirBtn.addEventListener('click', function(){
-            var name = (document.getElementById('newFolderName')||{}).value.trim();
-            if (!name || !currentBrowsePath) { showToast('Introduce un nombre','warning'); return; }
+        mkdirBtn.addEventListener('click', function() {
+            var name = (document.getElementById('newFolderName') || {}).value.trim();
+            if (!name) { showToast('Introduce un nombre para la carpeta', 'warning'); return; }
+            if (!currentBrowsePath) { showToast('No hay ninguna carpeta seleccionada', 'warning'); return; }
             setLoading(this, true);
             var self = this;
             fetch('/api/files/mkdir', {
-                method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({path: currentBrowsePath + '/' + name})
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: currentBrowsePath + '/' + name })
             })
-            .then(function(r){return r.json();})
-            .then(function(d){
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
                 setLoading(self, false);
                 hideModal('mkdirModal');
-                if (d.success) { showToast('Carpeta creada','success'); loadDirectory(currentBrowsePath); }
-                else showToast('Error: '+(d.error||''),'danger');
+                if (d.success) { showToast('Carpeta "' + name + '" creada', 'success'); loadDirectory(currentBrowsePath); }
+                else showToast('Error: ' + (d.error || ''), 'danger');
             })
-            .catch(function(){ setLoading(self, false); showToast('Error de conexión','danger'); });
+            .catch(function() { setLoading(self, false); showToast('Error de conexión', 'danger'); });
         });
     }
 
-    // Delete file/folder
+    // Eliminar archivo/carpeta
     var confirmDeleteFileBtn = document.getElementById('confirmDeleteFileBtn');
     if (confirmDeleteFileBtn) {
-        confirmDeleteFileBtn.addEventListener('click', function(){
-            var path = (document.getElementById('deleteFilePath')||{}).value;
+        confirmDeleteFileBtn.addEventListener('click', function() {
+            var path = (document.getElementById('deleteFilePath') || {}).value;
             setLoading(this, true);
             var self = this;
             fetch('/api/files/delete', {
-                method:'DELETE', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({path: path})
+                method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: path })
             })
-            .then(function(r){return r.json();})
-            .then(function(d){
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
                 setLoading(self, false);
                 hideModal('deleteFileModal');
-                if (d.success) { showToast('Eliminado correctamente','success'); loadDirectory(currentBrowsePath); }
-                else showToast('Error: '+(d.error||''),'danger');
+                if (d.success) { showToast('Eliminado correctamente', 'success'); loadDirectory(currentBrowsePath); }
+                else showToast('Error: ' + (d.error || ''), 'danger');
             })
-            .catch(function(){ setLoading(self, false); showToast('Error de conexión','danger'); });
+            .catch(function() { setLoading(self, false); showToast('Error de conexión', 'danger'); });
         });
     }
 
-    // Toggle upload zone
-    var openUploadBtn = document.getElementById('openUploadBtn');
+    // Subir archivo
+    var openUploadBtn  = document.getElementById('openUploadBtn');
     var closeUploadBtn = document.getElementById('closeUploadBtn');
-    var uploadZone = document.getElementById('uploadZone');
+    var uploadZone     = document.getElementById('uploadZone');
+
     if (openUploadBtn) {
-        openUploadBtn.addEventListener('click', function(){
-            if (!currentBrowsePath) { showToast('Selecciona un recurso compartido primero','warning'); return; }
+        openUploadBtn.addEventListener('click', function() {
             if (uploadZone) uploadZone.classList.toggle('d-none');
         });
     }
     if (closeUploadBtn) {
-        closeUploadBtn.addEventListener('click', function(){
+        closeUploadBtn.addEventListener('click', function() {
             if (uploadZone) uploadZone.classList.add('d-none');
         });
     }
 
-    // Upload file
     var uploadForm = document.getElementById('uploadForm');
     if (uploadForm) {
-        uploadForm.addEventListener('submit', function(ev){
+        uploadForm.addEventListener('submit', function(ev) {
             ev.preventDefault();
-            if (!currentBrowsePath) { showToast('Selecciona una carpeta primero','warning'); return; }
-            var fd = new FormData(this);
-            fd.set('path', currentBrowsePath);
+            var path = currentBrowsePath;
+            if (!path) { showToast('No hay ninguna carpeta seleccionada', 'warning'); return; }
+            var fd  = new FormData(this);
+            fd.set('path', path);
             var btn = this.querySelector('button[type=submit]');
             setLoading(btn, true);
-            fetch('/api/files/upload', { method:'POST', body: fd })
-            .then(function(r){return r.json();})
-            .then(function(d){
+            fetch('/api/files/upload', { method: 'POST', body: fd })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
                 setLoading(btn, false);
                 if (d.success) {
-                    showToast('Archivo subido correctamente','success');
+                    showToast('Archivo subido correctamente', 'success');
                     loadDirectory(currentBrowsePath);
                     uploadForm.reset();
                     if (uploadZone) uploadZone.classList.add('d-none');
+                } else {
+                    showToast('Error: ' + (d.error || ''), 'danger');
                 }
-                else showToast('Error: '+(d.error||''),'danger');
             })
-            .catch(function(){ setLoading(btn, false); showToast('Error de conexión','danger'); });
+            .catch(function() { setLoading(btn, false); showToast('Error de conexión', 'danger'); });
         });
     }
 

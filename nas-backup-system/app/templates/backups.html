@@ -114,7 +114,7 @@
         <div class="empty-state" style="padding:64px 24px;">
             <i class="bi bi-archive d-block" style="font-size:48px;margin-bottom:16px;opacity:.3;"></i>
             <p style="font-size:15px;margin-bottom:8px;">No hay backups registrados</p>
-            <small>Usa el botón "Nuevo Backup" para crear una copia de seguridad de un recurso compartido</small>
+            <small>Usa el botón "Nuevo Backup" para crear una copia de seguridad de tu carpeta personal</small>
         </div>
         {% endif %}
     </div>
@@ -132,19 +132,20 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Recurso a respaldar</label>
-                    <select id="backupShareSelect" class="form-select">
-                        <option value="">— Backup completo (todos los recursos) —</option>
-                        {% for share in shares %}
-                        <option value="{{ share.id }}">{{ share.name }} &mdash; {{ share.path }}</option>
-                        {% endfor %}
-                    </select>
+                <div class="info-box mb-3">
+                    <i class="bi bi-person-fill" style="color:var(--accent)"></i>
+                    <div>
+                        Se hará backup de la carpeta personal del usuario actual:<br>
+                        <code style="font-size:.82rem;">/srv/nas/shares/{{ current_user.username }}/</code><br>
+                        <span style="font-size:.8rem;color:var(--text-muted);">
+                            El backup se guardará como <strong>{{ current_user.username }}_YYYYMMDD_HHMMSS</strong>
+                        </span>
+                    </div>
                 </div>
-                <div class="info-box mt-3">
+                <div class="info-box">
                     <i class="bi bi-info-circle"></i>
-                    <div>Se usará rsync para copiar el contenido del recurso seleccionado al directorio de backups.
-                         La operación puede tardar varios minutos.</div>
+                    <div>Se usará rsync para copiar el contenido al directorio de backups.
+                         La operación puede tardar varios minutos dependiendo del tamaño.</div>
                 </div>
             </div>
             <div class="modal-footer">

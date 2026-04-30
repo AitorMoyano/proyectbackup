@@ -53,21 +53,16 @@ def backups():
 @bp.route('/api/backup', methods=['POST'])
 @login_required
 def create_backup():
-    data     = request.json
-    share_id = data.get('share_id')
-    if share_id:
-        share = Share.query.get_or_404(int(share_id))
-        src   = share.path
-        name  = share.name
-    else:
-        src  = current_app.config['SHARES_DIR']
-        name = 'completo'
+    # Backup de la carpeta personal del usuario en el NAS
+    name      = current_user.username
+    user_home = os.path.join(current_app.config['SHARES_DIR'], name)
+    run_cmd(f"sudo mkdir -p '{user_home}' && sudo chmod 777 '{user_home}'")
 
-    ts    = datetime.now().strftime('%Y%m%d_%H%M%S')
-    dest  = os.path.join(current_app.config['BACKUP_DIR'], f"{name}_{ts}")
+    ts   = datetime.now().strftime('%Y%m%d_%H%M%S')
+    dest = os.path.join(current_app.config['BACKUP_DIR'], f"{name}_{ts}")
     os.makedirs(dest, exist_ok=True)
 
-    result = run_cmd(f"rsync -av --delete {src}/ {dest}/", timeout=300)
+    result = run_cmd(f"rsync -av --delete '{user_home}/' '{dest}/'", timeout=300)
     size   = get_folder_size(dest)
 
     bk = Backup(source_name=name, backup_path=dest, size=size,
@@ -210,9 +205,13 @@ def delete_group(gid):
 @bp.route('/files')
 @login_required
 def files():
-    shares = Share.query.order_by(Share.name).all()
-    server_ip = current_app.config['SERVER_IP']
-    return render_template('files.html', shares=shares, server_ip=server_ip)
+    # Auto-crear carpeta personal del usuario en el NAS
+    user_home = os.path.join(current_app.config['SHARES_DIR'], current_user.username)
+    run_cmd(f"sudo mkdir -p '{user_home}' && sudo chmod 777 '{user_home}'")
+    return render_template('files.html',
+                           user_home=user_home,
+                           shares_dir=current_app.config['SHARES_DIR'],
+                           server_ip=current_app.config['SERVER_IP'])
 
 @bp.route('/api/shares', methods=['POST'])
 @login_required
@@ -255,7 +254,8 @@ def _safe_path(path):
 @bp.route('/api/files/browse')
 @login_required
 def browse_files():
-    path = request.args.get('path', current_app.config['SHARES_DIR'])
+    default = os.path.join(current_app.config['SHARES_DIR'], current_user.username)
+    path = request.args.get('path', default)
     real = _safe_path(path)
     if not real: return jsonify({'error':'Ruta no permitida'}),403
     if not os.path.isdir(real): return jsonify({'error':'No es un directorio'}),404

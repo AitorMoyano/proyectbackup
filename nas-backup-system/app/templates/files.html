@@ -1,244 +1,124 @@
 {% extends "base.html" %}
 {% block nav_files %}active{% endblock %}
-{% block page_title %}Estación de Ficheros{% endblock %}
-{% block page_subtitle %}Gestión de recursos compartidos y explorador de archivos{% endblock %}
-
-{% block header_actions %}
-{% if current_user.is_admin %}
-<button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#createShareModal">
-    <i class="bi bi-folder-plus me-1"></i>Nuevo recurso
-</button>
-{% endif %}
-{% endblock %}
+{% block page_title %}Mis Ficheros{% endblock %}
+{% block page_subtitle %}Almacenamiento personal en el NAS — {{ user_home }}{% endblock %}
 
 {% block content %}
-<div class="row g-3">
 
-    <!-- ===== LEFT: Shares list ===== -->
-    <div class="col-lg-4">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-hdd-network"></i>
-                Recursos Compartidos
-                <span class="badge ms-auto" style="background:rgba(59,130,246,.1);color:var(--accent);border:1px solid rgba(59,130,246,.2);">
-                    {{ shares|length }}
-                </span>
+<!-- Info bar -->
+<div class="card mb-3">
+    <div class="card-body py-2 px-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-3">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-person-fill" style="color:var(--accent);font-size:1.1rem;"></i>
+                <span style="font-size:.85rem;color:var(--text-secondary);">Tu carpeta:</span>
+                <code style="font-size:.78rem;color:var(--text-primary);background:rgba(59,130,246,.08);
+                             padding:2px 8px;border-radius:4px;border:1px solid rgba(59,130,246,.15);">
+                    {{ user_home }}
+                </code>
             </div>
-            <div class="card-body p-2">
-                {% if shares %}
-                {% for share in shares %}
-                <div class="share-item">
-                    <div class="d-flex align-items-start justify-content-between gap-2">
-                        <div class="flex-grow-1 min-w-0">
-                            <div class="share-name">
-                                <i class="bi bi-folder-fill me-1" style="color:var(--warning);"></i>
-                                {{ share.name }}
-                            </div>
-                            {% if share.description %}
-                            <div class="share-desc">{{ share.description }}</div>
-                            {% endif %}
-                            <div class="d-flex gap-1 mt-1 flex-wrap">
-                                {% if share.is_public %}
-                                <span class="badge" style="background:rgba(16,185,129,.1);color:var(--success);border:1px solid rgba(16,185,129,.2);font-size:10px;">
-                                    <i class="bi bi-unlock-fill me-1"></i>Público
-                                </span>
-                                {% else %}
-                                <span class="badge" style="background:rgba(245,158,11,.1);color:var(--warning);border:1px solid rgba(245,158,11,.2);font-size:10px;">
-                                    <i class="bi bi-lock-fill me-1"></i>Privado
-                                </span>
-                                {% endif %}
-                                {% if share.read_only %}
-                                <span class="badge" style="background:rgba(110,144,184,.1);color:var(--text-secondary);border:1px solid rgba(110,144,184,.2);font-size:10px;">
-                                    <i class="bi bi-eye-fill me-1"></i>Solo lectura
-                                </span>
-                                {% endif %}
-                            </div>
-                            <div class="mt-1" style="font-size:10px;color:var(--text-muted);font-family:monospace;">{{ share.path }}</div>
-                        </div>
-                        <div class="d-flex flex-column gap-1 flex-shrink-0">
-                            <button class="btn btn-sm btn-outline-primary py-0 browse-share"
-                                    data-path="{{ share.path }}"
-                                    title="Explorar">
-                                <i class="bi bi-eye"></i>
-                            </button>
-                            {% if current_user.is_admin %}
-                            <button class="btn btn-sm btn-outline-success py-0 backup-share"
-                                    data-id="{{ share.id }}"
-                                    data-name="{{ share.name }}"
-                                    title="Hacer backup">
-                                <i class="bi bi-cloud-arrow-up"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-danger py-0 delete-share"
-                                    data-id="{{ share.id }}"
-                                    data-name="{{ share.name }}"
-                                    title="Eliminar">
-                                <i class="bi bi-trash"></i>
-                            </button>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-                {% endfor %}
-                {% else %}
-                <div class="empty-state py-4">
-                    <i class="bi bi-folder2-open d-block" style="font-size:40px;margin-bottom:12px;opacity:.3;"></i>
-                    <p style="font-size:14px;margin-bottom:6px;">No hay recursos compartidos</p>
-                    <small>Crea el primer recurso para empezar</small>
-                </div>
-                {% endif %}
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-hdd-network" style="color:var(--text-muted);font-size:.9rem;"></i>
+                <span style="font-size:.82rem;color:var(--text-muted);">smb://{{ server_ip }}/{{ current_user.username }}</span>
             </div>
+        </div>
+        <div class="d-flex gap-2">
             {% if current_user.is_admin %}
-            <div class="card-body" style="border-top:1px solid var(--border);padding-top:.75rem;padding-bottom:.75rem;">
-                <button class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#createShareModal">
-                    <i class="bi bi-folder-plus me-2"></i>Nuevo recurso compartido
-                </button>
-            </div>
+            <button class="btn btn-sm btn-outline-secondary" id="goToRootBtn" title="Ver carpetas de todos los usuarios">
+                <i class="bi bi-people me-1"></i>Todos los usuarios
+            </button>
             {% endif %}
+            <button class="btn btn-sm btn-outline-primary" id="openMkdirBtn" title="Nueva carpeta">
+                <i class="bi bi-folder-plus me-1"></i>Carpeta
+            </button>
+            <button class="btn btn-sm btn-outline-success" id="openUploadBtn" title="Subir archivo">
+                <i class="bi bi-upload me-1"></i>Subir archivo
+            </button>
         </div>
     </div>
+</div>
 
-    <!-- ===== RIGHT: File explorer ===== -->
-    <div class="col-lg-8">
-        <div class="card">
-            <div class="card-header" style="justify-content:space-between;">
-                <div class="d-flex align-items-center gap-2">
-                    <i class="bi bi-folder2-open"></i>
-                    Explorador
-                </div>
-                <div class="d-flex gap-2">
-                    {% if current_user.is_admin %}
-                    <button class="btn btn-sm btn-outline-primary" id="openMkdirBtn" title="Nueva carpeta">
-                        <i class="bi bi-folder-plus me-1"></i>Carpeta
-                    </button>
-                    {% endif %}
-                    <button class="btn btn-sm btn-outline-success" id="openUploadBtn" title="Subir archivo">
+<!-- File browser — full width -->
+<div class="card">
+    <div class="card-header" style="justify-content:space-between;">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-folder2-open"></i>
+            <span id="explorerTitle">Cargando...</span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span id="fileCount" style="font-size:.8rem;color:var(--text-muted);"></span>
+        </div>
+    </div>
+    <div class="card-body">
+
+        <!-- Breadcrumb -->
+        <div class="breadcrumb-nav mb-3" id="fileBreadcrumb">
+            <span class="spinner-border spinner-border-sm me-2" style="color:var(--accent);"></span>
+            <span style="color:var(--text-muted);font-size:.85rem;">Cargando tu carpeta...</span>
+        </div>
+
+        <!-- Upload zone -->
+        <div id="uploadZone" class="upload-zone mb-3 d-none">
+            <form id="uploadForm" enctype="multipart/form-data">
+                <i class="bi bi-cloud-upload d-block mb-2" style="font-size:1.8rem;color:var(--accent);"></i>
+                <p class="mb-2" style="font-size:.85rem;">Selecciona un archivo para subir a la carpeta actual</p>
+                <div class="d-flex gap-2 justify-content-center align-items-center flex-wrap">
+                    <input type="file" name="file" class="form-control" style="max-width:300px;" required>
+                    <button type="submit" class="btn btn-sm btn-success">
                         <i class="bi bi-upload me-1"></i>Subir
                     </button>
+                    <button type="button" class="btn btn-sm btn-secondary" id="closeUploadBtn">
+                        <i class="bi bi-x"></i>
+                    </button>
                 </div>
-            </div>
-            <div class="card-body">
-
-                <!-- Breadcrumb -->
-                <div class="breadcrumb-nav" id="fileBreadcrumb">
-                    <span style="color:var(--text-muted);font-size:.8rem;"><i class="bi bi-hdd-network me-1"></i>Selecciona un recurso compartido para explorar</span>
-                </div>
-
-                <!-- Upload form (hidden by default) -->
-                <div id="uploadZone" class="upload-zone mb-3 d-none">
-                    <form id="uploadForm" enctype="multipart/form-data">
-                        <i class="bi bi-cloud-upload d-block mb-2" style="font-size:1.8rem;color:var(--accent);"></i>
-                        <p class="mb-2" style="font-size:.85rem;">Selecciona un archivo para subir a la carpeta actual</p>
-                        <div class="d-flex gap-2 justify-content-center align-items-center flex-wrap">
-                            <input type="file" name="file" class="form-control" style="max-width:280px;" required>
-                            <button type="submit" class="btn btn-sm btn-success">
-                                <i class="bi bi-upload me-1"></i>Subir archivo
-                            </button>
-                            <button type="button" class="btn btn-sm btn-secondary" id="closeUploadBtn">
-                                <i class="bi bi-x"></i>
-                            </button>
-                        </div>
-                    </form>
-                </div>
-
-                <!-- File table -->
-                <div class="table-responsive">
-                    <table class="table table-hover mb-0 file-table">
-                        <thead>
-                            <tr>
-                                <th style="width:32px;"></th>
-                                <th>Nombre</th>
-                                <th style="width:90px;">Tamaño</th>
-                                <th style="width:130px;">Modificado</th>
-                                {% if current_user.is_admin %}
-                                <th style="width:50px;"></th>
-                                {% endif %}
-                            </tr>
-                        </thead>
-                        <tbody id="fileExplorer">
-                            <tr>
-                                <td colspan="5" class="text-center py-5 text-muted">
-                                    <i class="bi bi-folder2-open d-block mb-2" style="font-size:2rem;opacity:.3;"></i>
-                                    Selecciona un recurso compartido de la lista de la izquierda
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-            </div>
+            </form>
         </div>
+
+        <!-- File table -->
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 file-table">
+                <thead>
+                    <tr>
+                        <th style="width:36px;"></th>
+                        <th>Nombre</th>
+                        <th style="width:100px;">Tamaño</th>
+                        <th style="width:140px;">Modificado</th>
+                        <th style="width:50px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="fileExplorer">
+                    <tr>
+                        <td colspan="5" class="text-center py-5 text-muted">
+                            <span class="spinner-border spinner-border-sm me-2"></span>Cargando...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
     </div>
 </div>
 
-<!-- ===== MODAL: Create Share ===== -->
-<div class="modal fade" id="createShareModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="bi bi-folder-plus me-2" style="color:var(--accent)"></i>
-                    Nuevo Recurso Compartido
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Nombre <span style="color:var(--danger)">*</span></label>
-                    <input type="text" id="shareName" class="form-control"
-                           placeholder="ej: documentos, multimedia..." required>
-                    <div class="form-text">Los espacios se reemplazarán por guiones bajos.</div>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Descripción <span style="color:var(--text-muted);font-weight:400;">(opcional)</span></label>
-                    <input type="text" id="shareDesc" class="form-control"
-                           placeholder="Describe el contenido de este recurso...">
-                </div>
-                <div class="mb-2">
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="sharePublic">
-                        <label class="form-check-label" for="sharePublic">
-                            Acceso público (sin autenticación Samba)
-                        </label>
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="shareRO">
-                        <label class="form-check-label" for="shareRO">
-                            Solo lectura
-                        </label>
-                    </div>
-                </div>
-                <div class="info-box">
-                    <i class="bi bi-info-circle"></i>
-                    <div>El recurso se creará en <code>/srv/nas/shares/&lt;nombre&gt;</code> y se configurará automáticamente en Samba.</div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button class="btn btn-primary" id="createShareBtn">
-                    <i class="bi bi-folder-plus me-2"></i>Crear recurso
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
+<!-- Data para JS -->
+<div id="fileStationData"
+     data-user-home="{{ user_home }}"
+     data-shares-dir="{{ shares_dir }}"
+     style="display:none;"></div>
 
-<!-- ===== MODAL: Create Folder ===== -->
+<!-- ===== MODAL: Nueva carpeta ===== -->
 <div class="modal fade" id="mkdirModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">
-                    <i class="bi bi-folder-plus me-2" style="color:var(--warning)"></i>
-                    Nueva Carpeta
+                    <i class="bi bi-folder-plus me-2" style="color:var(--warning)"></i>Nueva Carpeta
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <label class="form-label">Nombre de la carpeta <span style="color:var(--danger)">*</span></label>
                 <input type="text" id="newFolderName" class="form-control"
-                       placeholder="ej: fotos_2024, proyectos..." autofocus>
+                       placeholder="ej: documentos, fotos_2024..." autofocus>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -250,14 +130,13 @@
     </div>
 </div>
 
-<!-- ===== MODAL: Delete File/Folder ===== -->
+<!-- ===== MODAL: Eliminar archivo/carpeta ===== -->
 <div class="modal fade" id="deleteFileModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">
-                    <i class="bi bi-trash me-2" style="color:var(--danger)"></i>
-                    Eliminar archivo
+                    <i class="bi bi-trash me-2" style="color:var(--danger)"></i>Eliminar
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -273,35 +152,6 @@
                 <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                 <button class="btn btn-danger" id="confirmDeleteFileBtn">
                     <i class="bi bi-trash me-2"></i>Eliminar
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- ===== MODAL: Backup Share ===== -->
-<div class="modal fade" id="backupShareModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="bi bi-cloud-arrow-up me-2" style="color:var(--success)"></i>
-                    Hacer Backup
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>¿Crear un backup del recurso compartido <strong id="backupShareName"></strong>?</p>
-                <input type="hidden" id="backupShareId">
-                <div class="info-box mt-3">
-                    <i class="bi bi-info-circle"></i>
-                    <div>Se copiará el contenido del recurso al directorio de backups usando rsync.</div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button class="btn btn-success" id="confirmBackupShareBtn">
-                    <i class="bi bi-cloud-arrow-up me-2"></i>Iniciar backup
                 </button>
             </div>
         </div>
