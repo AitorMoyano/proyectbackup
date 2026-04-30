@@ -37,7 +37,8 @@ echo "    ✓ Dependencias instaladas"
 echo "📁 [2/8] Creando directorios NAS..."
 mkdir -p /srv/nas/shares /srv/nas/backups
 chown -R "$DEPLOY_USER":"$DEPLOY_USER" /srv/nas
-chmod -R 775 /srv/nas
+chmod -R 777 /srv/nas/shares
+chmod -R 775 /srv/nas/backups
 echo "    ✓ /srv/nas/shares y /srv/nas/backups creados"
 
 # ── [3/8] Entorno virtual Python ────────────────────────────
@@ -147,7 +148,7 @@ systemctl restart smbd nmbd 2>/dev/null || true
 echo "    ✓ Samba configurado (los recursos se gestionan desde la app)"
 
 # ── Sudoers para comandos NAS ────────────────────────────────
-echo "$DEPLOY_USER ALL=(ALL) NOPASSWD: /usr/bin/rsync, /usr/sbin/mdadm, /usr/bin/nmap, /bin/cp, /bin/mkdir, /bin/chmod, /bin/chown, /bin/rm, /usr/bin/tee, /bin/systemctl reload smbd, /bin/systemctl restart smbd" \
+echo "$DEPLOY_USER ALL=(ALL) NOPASSWD: /usr/bin/rsync, /usr/sbin/mdadm, /usr/bin/nmap, /bin/cp, /bin/mv, /bin/mkdir, /bin/chmod, /bin/chown, /bin/rm, /usr/bin/tee, /bin/systemctl reload smbd, /bin/systemctl restart smbd, /usr/bin/mv, /usr/bin/mkdir, /usr/bin/chmod, /usr/bin/chown, /usr/bin/rm, /usr/bin/cp" \
     > /etc/sudoers.d/nas-backup
 chmod 440 /etc/sudoers.d/nas-backup
 echo "    ✓ Sudoers configurado para $DEPLOY_USER"

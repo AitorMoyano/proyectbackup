@@ -232,7 +232,7 @@ def manage_shares():
                   read_only=d.get('read_only', False))
         db.session.add(s); db.session.commit()
         run_cmd(f"sudo mkdir -p {path}")
-        run_cmd(f"sudo chmod 775 {path}")
+        run_cmd(f"sudo chmod 777 {path}")
         run_cmd(f"sudo chown nobody:nogroup {path} 2>/dev/null || sudo chown nobody:nobody {path}")
         rebuild_samba(Share.query.all(), current_app.config['SERVER_IP'])
         return jsonify({'success':True,'id':s.id,'path':path})
@@ -301,20 +301,22 @@ def delete_file():
 @bp.route('/api/files/upload', methods=['POST'])
 @login_required
 def upload_file():
+    import tempfile
     path = request.form.get('path', current_app.config['SHARES_DIR'])
     real = _safe_path(path)
     if not real: return jsonify({'error':'Ruta no permitida'}),403
     if 'file' not in request.files: return jsonify({'error':'Sin archivo'}),400
     f = request.files['file']
     if not f.filename: return jsonify({'error':'Nombre de archivo inválido'}),400
+    # Guardar primero en /tmp (siempre tenemos permiso) y luego mover con sudo
+    tmp = tempfile.mktemp(prefix='nas_upload_')
     try:
+        f.save(tmp)
         dest = os.path.join(real, f.filename)
-        f.save(dest)
-        return jsonify({'success':True})
+        result = run_cmd(f"sudo mv '{tmp}' '{dest}' && sudo chmod 664 '{dest}'")
+        if result['success']:
+            return jsonify({'success': True})
+        return jsonify({'error': result.get('error', 'Error al mover el fichero')}), 500
     except Exception as e:
-        run_cmd(f"sudo chmod 775 {real}")
-        try:
-            f.seek(0); f.save(dest)
-            return jsonify({'success':True})
-        except Exception as e2:
-            return jsonify({'error':str(e2)}),500
+        run_cmd(f"rm -f '{tmp}'")
+        return jsonify({'error': str(e)}), 500
